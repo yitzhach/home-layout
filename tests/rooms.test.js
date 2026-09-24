@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   roomWalls, wallOpenings, wallPieces, subtract, houseExtent, roomBeside, newRoom, newOpening,
-  starterRooms, validRooms, constrainRoom, findRoomWall, roomWallLabel,
+  starterRooms, validRooms, constrainRoom, findRoomWall, roomWallLabel, wallCorners, wallGaps, wallFootprint, WALL,
 } from "../src/rooms.js";
 
 const home = (rooms) => ({ booth: { rooms } });
@@ -58,6 +58,7 @@ test("a door typed in the second room cuts the first room's wall, swinging the r
   assert.equal(cuts.length, 1);
   // b's west wall runs from z=+60 northward; a's east wall from z=-60 southward.
   assert.equal(cuts[0].x, 120 - 40);
+  assert.equal(b.x - b.width / 2, 60 + WALL, "the second room stands a wall away");
   assert.equal(cuts[0].width, 30);
   assert.equal(cuts[0].into, -1, "into b is away from a's front face");
 });
@@ -110,10 +111,54 @@ test("a room resized keeps the edge it shares with its neighbour", async () => {
   const a = newRoom({ x: 0, z: 0, width: 120, depth: 120 });
   const east = newRoom({ ...roomBeside(a, "e") });
   const grown = resizeRoom([a, east], east, "width", 168);
-  assert.equal(grown.x - grown.width / 2, 60, "west edge stays on the shared wall");
+  assert.equal(grown.x - grown.width / 2, 60 + WALL, "west edge stays on the shared wall");
   const west = newRoom({ ...roomBeside(a, "w") });
   const g2 = resizeRoom([a, west], west, "width", 168);
-  assert.equal(g2.x + g2.width / 2, -60, "east edge stays on the shared wall");
+  assert.equal(g2.x + g2.width / 2, -60 - WALL, "east edge stays on the shared wall");
   const alone = resizeRoom([a], a, "depth", 150);
   assert.equal(alone.z - alone.depth / 2, -60, "a lone room grows from its north-west corner");
+});
+
+test("walls stand behind their room's edge, a stud wall thick", () => {
+  const r = newRoom({ x: 0, z: 0, width: 120, depth: 96 });
+  const by = Object.fromEntries(roomWalls(home([r])).map((w) => [w.side, wallFootprint(w)]));
+  assert.deepEqual(by.n, { x0: -60, x1: 60, z0: -48 - WALL, z1: -48 });
+  assert.deepEqual(by.e, { x0: 60, x1: 60 + WALL, z0: -48, z1: 48 });
+  assert.deepEqual(by.s, { x0: -60, x1: 60, z0: 48, z1: 48 + WALL });
+  assert.deepEqual(by.w, { x0: -60 - WALL, x1: -60, z0: -48, z1: 48 });
+});
+
+test("a lone room's four outside corners are closed, and nothing else", () => {
+  const r = newRoom({ x: 0, z: 0, width: 120, depth: 96 });
+  const c = wallCorners(home([r]));
+  assert.equal(c.length, 4);
+  for (const q of c) {
+    assert.equal(q.x1 - q.x0, WALL);
+    assert.equal(q.z1 - q.z0, WALL);
+    assert.equal(q.height, r.height);
+    assert.ok(Math.abs(Math.abs(q.x0 + q.x1) / 2 - (60 + WALL / 2)) < 1e-9);
+  }
+});
+
+test("two rooms a wall apart share the wall and the floor under it", () => {
+  const a = newRoom({ x: 0, z: 0, width: 120, depth: 120 });
+  const b = newRoom({ ...roomBeside(a, "e") });
+  const p = home([a, b]);
+  const shared = roomWalls(p).filter((w) => w.room === a.id && w.side === "e");
+  assert.equal(shared.length, 1);
+  const f = wallFootprint(shared[0]);
+  assert.equal(f.x1, b.x - b.width / 2, "the wall's far face is the neighbour's edge");
+  assert.deepEqual(wallGaps(p).map((g) => [g.x0, g.x1, g.z0, g.z1]), [[60, 60 + WALL, -60, 60]]);
+  // Four outer corners plus the two where the shared wall meets the outside.
+  assert.equal(wallCorners(p).length, 6);
+  b.open = ["w"];
+  assert.equal(wallGaps(p).length, 1, "an open plan keeps its floor");
+});
+
+test("rooms saved touching, before walls were thick, still share one wall", () => {
+  const a = newRoom({ x: 0, z: 0, width: 120, depth: 120 });
+  const b = newRoom({ x: 120, z: 0, width: 120, depth: 120 });
+  const walls = roomWalls(home([a, b]));
+  assert.equal(walls.length, 7);
+  assert.equal(wallGaps(home([a, b])).length, 0);
 });

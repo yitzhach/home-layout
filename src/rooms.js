@@ -42,6 +42,16 @@ export const ROOM_LIMITS = {
 };
 /** Where two edges count as the same line, in inches. */
 const SNAP = 0.5;
+/**
+ * A wall's thickness, in inches: 2×4 studs (3½″) with ½″ drywall on both
+ * faces. A room's width and depth are its clear inside measurements, the ones
+ * a tape across the room gives, so every wall stands *outside* its room: its
+ * front face on the room's edge and its body behind it. Two rooms side by side
+ * therefore stand one wall apart — `roomBeside` leaves the gap and the shared
+ * wall fills it. Rooms saved touching (before walls had a thickness) still
+ * share their wall; the neighbour simply loses the wall's depth.
+ */
+export const WALL = 4.5;
 export const OPENING_KINDS = {
   door: { label: "Door", width: 32, height: 80, sill: 0 },
   window: { label: "Window", width: 36, height: 48, sill: 30 },
@@ -122,6 +132,10 @@ export const roomBox = (r) => ({
  * (degrees, three's convention, the way a panel's is typed).
  */
 export function roomEdge(r, side) {
+  const e = edgeOf(r, side);
+  return e && { side, ...e };
+}
+function edgeOf(r, side) {
   const b = roomBox(r);
   switch (side) {
     case "n":
@@ -155,7 +169,21 @@ export function subtract(lo, hi, cuts) {
   return left.filter(([a, b]) => b - a >= 1);
 }
 
-const sameLine = (e, f) => e.axis === f.axis && Math.abs(e.at - f.at) <= SNAP;
+const OPPOSITE = { n: "s", s: "n", e: "w", w: "e" };
+/** +1 when a side's outward direction is +X or +Z, −1 otherwise. */
+const OUTWARD = { n: -1, s: 1, e: 1, w: -1 };
+/**
+ * Whether two room edges are two faces of the same wall: the same line (a
+ * room saved touching its neighbour, or two rooms overlapping), or opposite
+ * sides standing up to one wall's thickness apart, the second behind the first.
+ */
+export function sameLine(e, f) {
+  if (e.axis !== f.axis) return false;
+  if (Math.abs(e.at - f.at) <= SNAP) return true;
+  if (OPPOSITE[e.side] !== f.side) return false;
+  const gap = (f.at - e.at) * OUTWARD[e.side];
+  return gap >= -SNAP && gap <= WALL + SNAP;
+}
 const overlapOf = (e, f) => [Math.max(e.lo, f.lo), Math.min(e.hi, f.hi)];
 
 /**
@@ -180,7 +208,9 @@ export function roomWalls(p) {
       .filter((f) => f.index < e.index || f.open)
       .map((f) => overlapOf(e, f))
       .filter(([a, b]) => b > a);
-    const pieces = subtract(e.lo, e.hi, cuts);
+    // A stretch no longer than a wall is thick is the end of the wall behind
+    // a neighbour's: a corner, which `wallCorners` closes, not a wall to hang on.
+    const pieces = subtract(e.lo, e.hi, cuts).filter(([a, b]) => b - a > WALL + SNAP);
     pieces.forEach(([a, b], piece) => {
       // Distances along the wall's own direction, from its left end.
       const along = (v) => (e.dir.x + e.dir.z > 0 ? v - e.lo : e.hi - v);
@@ -232,7 +262,7 @@ export function wallOpenings(p, wall) {
   for (const r of homeRooms(p)) {
     for (const o of r.openings || []) {
       const e = roomEdge(r, o.side);
-      if (!e || e.axis !== wall.axis || Math.abs(e.at - wall.at) > SNAP) continue;
+      if (!e || !sameLine(wall, e)) continue;
       // The opening's two ends on the plan, then on this wall.
       const p0 = { x: e.origin.x + e.dir.x * o.x, z: e.origin.z + e.dir.z * o.x },
         p1 = { x: e.origin.x + e.dir.x * (o.x + o.width), z: e.origin.z + e.dir.z * (o.x + o.width) };
@@ -292,6 +322,74 @@ export function wallPieces(width, height, openings = []) {
 }
 
 /**
+ * A wall's footprint on the plan: the rectangle from its front face on the
+ * room's edge back through its thickness, in inches.
+ */
+export function wallFootprint(w, t = WALL) {
+  const r = (w.rotation * Math.PI) / 180,
+    back = { x: -Math.round(Math.sin(r)), z: -Math.round(Math.cos(r)) };
+  const a = w.origin,
+    b = { x: a.x + w.dir.x * w.width, z: a.z + w.dir.z * w.width };
+  const xs = [a.x, b.x, a.x + back.x * t, b.x + back.x * t],
+    zs = [a.z, b.z, a.z + back.z * t, b.z + back.z * t];
+  return { x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) };
+}
+const area = (a, b) =>
+  Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.z1, b.z1) - Math.max(a.z0, b.z0));
+const grow = (a, d) => ({ x0: a.x0 - d, x1: a.x1 + d, z0: a.z0 - d, z1: a.z1 + d });
+
+/**
+ * The squares that close a house's corners. Each wall stands behind its own
+ * room's edge and runs exactly that edge's length, so where two walls meet at
+ * a corner the thickness-by-thickness square outside both is nobody's. Each
+ * one is found here — a square past the end of a wall that no wall already
+ * covers and that a wall running the other way touches — and is stood by the
+ * scene as a plain post, which no art hangs on.
+ */
+export function wallCorners(p, t = WALL) {
+  const walls = roomWalls(p).map((w) => ({ w, f: wallFootprint(w, t) }));
+  const out = new Map();
+  for (const { w, f } of walls) {
+    const ends = w.axis === "x" ? [[f.x0 - t, f.x0], [f.x1, f.x1 + t]] : [[f.z0 - t, f.z0], [f.z1, f.z1 + t]];
+    for (const [lo, hi] of ends) {
+      const sq = w.axis === "x" ? { x0: lo, x1: hi, z0: f.z0, z1: f.z1 } : { x0: f.x0, x1: f.x1, z0: lo, z1: hi };
+      if (walls.some((o) => area(o.f, sq) > 0.01)) continue;
+      const meets = walls.filter((o) => o.w.axis !== w.axis && area(o.f, grow(sq, SNAP)) > 0.01);
+      if (!meets.length) continue;
+      const key = `${Math.round(sq.x0 * 2)},${Math.round(sq.z0 * 2)}`;
+      const height = Math.min(w.height, ...meets.map((o) => o.w.height));
+      if (!out.has(key) || out.get(key).height < height) out.set(key, { ...sq, height });
+    }
+  }
+  return [...out.values()];
+}
+
+/**
+ * The strips of floor between rooms that stand a wall apart: under the wall
+ * they share, and — where one of them has opened that side — the floor the
+ * missing wall would have stood on, so an open plan has no gap in it.
+ */
+export function wallGaps(p) {
+  const rooms = homeRooms(p),
+    out = [];
+  rooms.forEach((a, i) =>
+    ["e", "s"].forEach((side) => {
+      const e = roomEdge(a, side);
+      rooms.forEach((b, j) => {
+        if (i === j) return;
+        const f = roomEdge(b, OPPOSITE[side]);
+        const gap = (f.at - e.at) * OUTWARD[side];
+        if (!sameLine(e, f) || gap <= SNAP) return;
+        const [lo, hi] = overlapOf(e, f);
+        if (hi - lo < 1) return;
+        out.push(e.axis === "z" ? { x0: e.at, x1: f.at, z0: lo, z1: hi, room: a.id } : { x0: lo, x1: hi, z0: e.at, z1: f.at, room: a.id });
+      });
+    }),
+  );
+  return out;
+}
+
+/**
  * The floor a set of rooms needs, as the footprint the rest of the app
  * measures against: centred on the origin, as the booth always was, and big
  * enough to hold every room with a foot to spare.
@@ -308,18 +406,18 @@ export function houseExtent(rooms, min = 120) {
 }
 
 /**
- * Where a new room goes when it is added beside `from` on `side`: sharing that
- * whole wall, lined up with its near end, so the two rooms meet on one line
- * and the wall between them is drawn once.
+ * Where a new room goes when it is added beside `from` on `side`: one wall's
+ * thickness away, sharing that whole wall, lined up with its near end, so the
+ * wall between them is drawn once and both rooms keep their inside size.
  */
 export function roomBeside(from, side, size = {}) {
   const width = size.width ?? from.width,
     depth = size.depth ?? from.depth;
   const b = roomBox(from);
-  if (side === "e") return { x: b.x1 + width / 2, z: b.z0 + depth / 2, width, depth };
-  if (side === "w") return { x: b.x0 - width / 2, z: b.z0 + depth / 2, width, depth };
-  if (side === "n") return { x: b.x0 + width / 2, z: b.z0 - depth / 2, width, depth };
-  return { x: b.x0 + width / 2, z: b.z1 + depth / 2, width, depth };
+  if (side === "e") return { x: b.x1 + WALL + width / 2, z: b.z0 + depth / 2, width, depth };
+  if (side === "w") return { x: b.x0 - WALL - width / 2, z: b.z0 + depth / 2, width, depth };
+  if (side === "n") return { x: b.x0 + width / 2, z: b.z0 - WALL - depth / 2, width, depth };
+  return { x: b.x0 + width / 2, z: b.z1 + WALL + depth / 2, width, depth };
 }
 
 /**
@@ -333,7 +431,7 @@ export function resizeRoom(rooms, r, key, value) {
     const e = roomEdge(r, side);
     return rooms.some((o) => o !== r && o.id !== r.id && SIDES.some((sd) => {
       const f = roomEdge(o, sd);
-      return f.axis === e.axis && Math.abs(f.at - e.at) <= SNAP && Math.min(e.hi, f.hi) - Math.max(e.lo, f.lo) > 1;
+      return sameLine(e, f) && Math.min(e.hi, f.hi) - Math.max(e.lo, f.lo) > 1;
     }));
   };
   const b = roomBox(r);

@@ -59,8 +59,9 @@ try {
   assert.equal(s.walls.length, 15, 'three new walls; the shared one is the kitchen\'s');
   assert.equal(s.leaves, 4);
   const kitchen = s.rooms.find((r) => r.name === 'Kitchen');
-  const kitchenEast = kitchen.x + kitchen.width / 2;
-  assert.equal(dining.x - dining.width / 2, kitchenEast, 'it stands against the kitchen');
+  // One 4½″ wall between them: rooms are measured inside their walls.
+  const kitchenEast = kitchen.x + kitchen.width / 2 + 4.5;
+  assert.equal(dining.x - dining.width / 2, kitchenEast, 'it stands a wall away from the kitchen');
 
   // Grown from the shared edge, not the centre.
   const width = page.getByLabel('Dining room Width', { exact: true });

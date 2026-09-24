@@ -31,10 +31,13 @@ import { DEFAULT_FRAME, frameSize } from "./framing.js";
 import { AUTO_QUALITY, FrameBudget, startScale, stepDown } from "./adaptive.js";
 import { distanceInches, formatLength, planDimensions } from "./measure.js";
 import { buildFurniture } from "./furniture.js";
-import { findRoomWall, isRoomKey, wallOpenings, wallPieces } from "./rooms.js";
+import { WALL, findRoomWall, isRoomKey, wallCorners, wallGaps, wallOpenings, wallPieces } from "./rooms.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
 const WALL_SLAB_OFFSET = 0.031;
+// A room wall's faces stand this far (metres) inside its frames, for the same
+// reason.
+const ROOM_WALL_SLIVER = 0.0035;
 /**
  * Which wall frame a piece of artwork hangs on. A work in the home booth
  * names no booth and keys by its wall alone, which is exactly what every
@@ -1057,9 +1060,13 @@ export class BoothScene {
     const openings = wallOpenings(p, spec),
       wallMat = rough(p.booth.color),
       trim = rough("#f7f5f0"),
-      t = 0.055;
+      t = WALL * IN,
+      // The body stands behind the frame, a sliver short of both faces so
+      // art on either side never fights the plaster for depth.
+      zc = -t / 2,
+      depth = t - 2 * ROOM_WALL_SLIVER;
     for (const r of wallPieces(spec.width, spec.height, openings)) {
-      const mesh = this.box(r.w * IN, r.h * IN, t, (r.x + r.w / 2) * IN, (r.y + r.h / 2) * IN, -WALL_SLAB_OFFSET, wallMat, g);
+      const mesh = this.box(r.w * IN, r.h * IN, depth, (r.x + r.w / 2) * IN, (r.y + r.h / 2) * IN, zc, wallMat, g);
       mesh.userData.wall = key;
       this.wallObjects.push(mesh);
     }
@@ -1067,9 +1074,11 @@ export class BoothScene {
     const floorCuts = openings.filter((o) => o.kind !== "window");
     for (const r of wallPieces(spec.width, 4, floorCuts.map((o) => ({ ...o, sill: 0, height: 4 }))))
       for (const side of [1, -1])
-        this.box(r.w * IN, 4 * IN, 0.012, (r.x + r.w / 2) * IN, 2 * IN, -WALL_SLAB_OFFSET + side * (t / 2 + 0.006), trim, g);
+        this.box(r.w * IN, 4 * IN, 0.012, (r.x + r.w / 2) * IN, 2 * IN, zc + side * (t / 2 + 0.006), trim, g);
+    // The far face is the neighbouring room's (or the outside of the house):
+    // its frame stands on that face, turned to look out of it.
     const exterior = new T.Group();
-    exterior.position.set(width, 0, -0.063);
+    exterior.position.set(width, 0, -t);
     exterior.rotation.y = Math.PI;
     g.add(exterior);
     this.frames[key + "-outside"] = exterior;
@@ -1078,7 +1087,7 @@ export class BoothScene {
         w = o.width * IN,
         y0 = o.sill * IN,
         h = o.height * IN,
-        z = -WALL_SLAB_OFFSET;
+        z = zc;
       // Casing round the opening, on both faces.
       for (const side of [1, -1]) {
         const zf = z + side * (t / 2 + 0.008);
@@ -1138,6 +1147,23 @@ export class BoothScene {
       floor.userData.room = r.id;
       this.group.add(floor);
     }
+    // The floor between two rooms a wall apart: under their wall, or through
+    // the opening where one of them has taken that wall away.
+    for (const s of wallGaps(p)) {
+      const strip = new T.Mesh(new T.BoxGeometry((s.x1 - s.x0) * IN, 0.004, (s.z1 - s.z0) * IN), mat);
+      strip.position.set(((s.x0 + s.x1) / 2) * IN, 0.002, ((s.z0 + s.z1) / 2) * IN);
+      strip.receiveShadow = true;
+      this.group.add(strip);
+    }
+    // The posts that close the corners where two walls meet.
+    const post = new T.MeshStandardMaterial({ color: p.booth.color, roughness: 0.92 });
+    for (const c of wallCorners(p)) {
+      const mesh = new T.Mesh(new T.BoxGeometry((c.x1 - c.x0) * IN, c.height * IN, (c.z1 - c.z0) * IN), post);
+      mesh.position.set(((c.x0 + c.x1) / 2) * IN, (c.height / 2) * IN, ((c.z0 + c.z1) / 2) * IN);
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.name = "wall-corner";
+      this.group.add(mesh);
+    }
   }
   box(w, h, d, x, y, z, mat, parent = this.group) {
     const o = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
@@ -1159,7 +1185,15 @@ export class BoothScene {
       W = p.width * IN,
       D = p.depth * IN;
     const g = new T.Group();
-    const panel = findPanel(this.p, wall) || findRoomWall(this.p, wall);
+    // A room's wall stands its frame on the room's edge, the face the room
+    // is measured to, with the wall's body behind it.
+    const roomWall = findRoomWall(this.p, wall);
+    if (roomWall) {
+      g.position.set(roomWall.origin.x * IN, 0, roomWall.origin.z * IN);
+      g.rotation.y = (roomWall.rotation * Math.PI) / 180;
+      return g;
+    }
+    const panel = findPanel(this.p, wall);
     if (panel) return placePanelFrame(g, panel);
     if (wall === "back") g.position.set(-W / 2, 0, -D / 2);
     if (wall === "left") {
