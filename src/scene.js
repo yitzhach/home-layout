@@ -1138,6 +1138,7 @@ export class BoothScene {
    * oak colour until rooms carry their own finishes.
    */
   buildRoomFloors(p) {
+    this.roomFloorObjects = [];
     const mat = new T.MeshStandardMaterial({ color: "#b48a5e", roughness: 0.7 });
     for (const r of p.booth.rooms || []) {
       const floor = new T.Mesh(new T.BoxGeometry(r.width * IN, 0.004, r.depth * IN), mat);
@@ -1146,6 +1147,7 @@ export class BoothScene {
       floor.name = "room-floor:" + r.id;
       floor.userData.room = r.id;
       this.group.add(floor);
+      this.roomFloorObjects.push(floor);
     }
     // The floor between two rooms a wall apart: under their wall, or through
     // the opening where one of them has taken that wall away.
@@ -2450,6 +2452,24 @@ export class BoothScene {
     this.clampToGround();
     this.controls.update();
   }
+  /**
+   * The room whose floor is under the pointer, if nothing nearer — a wall, a
+   * work, a piece of furniture — is in front of it. Needs `point()` first.
+   */
+  pickRoom() {
+    if (!this.roomFloorObjects?.length) return null;
+    const hit = this.ray.intersectObjects([...this.roomFloorObjects, ...this.wallObjects, ...this.artObjects, ...this.pedestalObjects], false)[0];
+    return hit?.object.userData.room && !hit.object.userData.wall ? hit.object.userData.room : null;
+  }
+  /**
+   * The house grew or shrank from `before` to `after` (its longest side, in
+   * inches): step the camera back or in by the same ratio, keeping the angle
+   * it is looking from, so a room added at the edge is not added out of frame.
+   */
+  refit(before, after) {
+    if (this.walking || !(before > 0) || !(after > 0) || Math.abs(after / before - 1) < 0.01) return;
+    this.zoom(before / after);
+  }
   point(e) {
     const r = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(
@@ -2777,6 +2797,20 @@ export class BoothScene {
         }
         const hit = this.pickArt();
         const id = hit?.object.userData.artId || null;
+        // A tap on a room's floor, with nothing standing or hanging in the
+        // way, selects the room: the Rooms tab opens on it.
+        const room = !id && this.pickRoom();
+        if (room && this.onSelectRoom) {
+          this.lastTap = null;
+          this.down = null;
+          this.letGoOfArt();
+          if (this.selectedPanel) {
+            this.selectedPanel = null;
+            this.onSelectPanel(null);
+          }
+          this.onSelectRoom(room);
+          return;
+        }
         // Clicking anything that is not a free-standing wall lets go of the
         // one that was selected, so the sliders never point at a wall the
         // pointer has moved on from.

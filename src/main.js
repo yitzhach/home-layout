@@ -488,6 +488,16 @@ async function boot() {
       revealPedestalFields();
       toast(`${piece.name}: ${formatLength(piece.width).split(" · ")[0]} × ${formatLength(piece.depth).split(" · ")[0]}, 12″ high. Pull it up in the Walls tool.`);
     };
+    // Tapping a room's floor opens the Rooms tab on that room.
+    scene.onSelectRoom = (id) => {
+      selectedRoom = id;
+      selected = null;
+      picked = [];
+      selectedPanel = null;
+      selectedPedestal = null;
+      tab = "rooms";
+      renderSelection();
+    };
     scene.onMeasure = (inches) => {
       measureHint = inches == null ? MEASURE_HINT : "Measured " + formatLength(inches) + " · click to start a new tape · Esc to stop";
       renderStatus();
@@ -2061,8 +2071,12 @@ async function boot() {
    * get shorter when a room shrinks or a neighbour takes part of it.
    */
   function settleRooms() {
+    const before = Math.max(p.booth.width, p.booth.depth);
     p.booth.rooms = homeRooms(p).map(constrainRoom);
     Object.assign(p.booth, houseExtent(p.booth.rooms));
+    // The camera follows the house: a room added at the edge comes into
+    // frame rather than past it, and the view closes in when one goes.
+    if (p.mode === "3d") scene?.refit(before, Math.max(p.booth.width, p.booth.depth));
     p.art = p.art.map((a) => constrain(p, a));
     p.booth.pedestals = boothPedestals(p).map((ped) => constrainPedestal(p, ped));
   }

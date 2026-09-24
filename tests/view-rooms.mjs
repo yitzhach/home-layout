@@ -51,8 +51,11 @@ try {
   await page.click('[data-tab="rooms"]');
   await page.click('[data-action="room-select"]:has-text("Kitchen")');
   await page.selectOption('#new-room-type', 'dining');
+  const distance = () => page.evaluate(() => { const s = window.__booth.scene; return s.camera.position.distanceTo(s.controls.target); });
+  const before = await distance();
   await page.click('[data-action="room-add"][data-side="e"]');
   s = await state();
+  assert.ok(await distance() > before * 1.05, 'the camera steps back as the house grows');
   const dining = s.rooms.at(-1);
   assert.equal(dining.name, 'Dining room');
   assert.equal(dining.openings, 1, 'a new room comes with a door into it');
@@ -126,6 +129,18 @@ try {
   await page.locator('[data-view="plan"]').click();
   assert.equal(await page.evaluate(() => window.__booth.scene.camera.isOrthographicCamera), true);
 
+  // Tapping a room's floor selects that room in the Rooms tab.
+  await page.click('[data-tab="art"]');
+  const at = await page.evaluate(() => {
+    const s = window.__booth.scene, k = window.__booth.project.booth.rooms.find((r) => r.name === 'Kitchen');
+    const v = s.camera.position.clone().set(k.x * 0.0254, 0, (k.z + k.depth / 4) * 0.0254).project(s.camera);
+    const r = s.renderer.domElement.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+  });
+  await page.mouse.click(at.x, at.y);
+  assert.equal(await page.locator('[data-tab="rooms"]').evaluate((b) => b.classList.contains('active')), true, 'the Rooms tab opens');
+  assert.match(await page.locator('[data-action="room-select"].active').textContent(), /Kitchen/, 'on the room tapped');
+
   // Stairs are a floor piece like any other.
   await page.click('[data-tab="walls"]');
   await page.selectOption('#furniture-kind', 'stairs');
@@ -136,7 +151,7 @@ try {
   assert.equal(stairs.limits, undefined, 'the kind\'s limits are not copied into the record');
 
   assert.deepEqual(errors, [], 'no page errors');
-  console.log('PASS the starter floor builds shared walls once with doors, windows and an archway cut in; a room added beside another shares its wall and gets a door, grows from that wall, takes a window, opens up, survives a reload, and comes back with undo after a delete; stairs are furniture.');
+  console.log('PASS the starter floor builds shared walls once with doors, windows and an archway cut in; a room added beside another shares its wall and gets a door, grows from that wall, takes a window, opens up, survives a reload, and comes back with undo after a delete; the camera follows the house; tapping a floor selects its room; stairs are furniture.');
 } finally {
   await browser.close();
   await server.close();
