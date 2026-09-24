@@ -26,7 +26,7 @@ try {
 
   assert.equal(await page.evaluate(() => window.__booth.tier), 'pro', 'a new browser is Pro');
   await page.click('[data-tab="export"]');
-  assert.equal(await page.locator('[data-action="show-pack"]').count(), 1, 'Pro shows the show pack');
+  assert.equal(await page.locator('[data-action="guide"]').count(), 1, 'Pro shows the hanging guide');
   assert.equal(await page.locator('[data-pro-lock]').count(), 0, 'and no locks');
 
   // ---- Lite -------------------------------------------------------------
@@ -39,7 +39,7 @@ try {
   assert.equal(await page.locator('[data-action="save-template"]').count(), 0, 'templates are Pro');
 
   await page.click('[data-tab="export"]');
-  for (const f of ['video', 'showPack', 'guide'])
+  for (const f of ['video', 'guide'])
     assert.equal(await page.locator(`[data-pro-lock="${f}"]`).count(), 1, `${f} is locked in Lite`);
   assert.equal(await page.locator('[data-action="export-image"]').count(), 1, 'PNG export is everyone\'s');
 
@@ -48,20 +48,20 @@ try {
   page.on('download', (d) => downloads.push(d));
   await page.evaluate(() => {
     const b = document.createElement('button');
-    b.dataset.action = 'show-pack';
+    b.dataset.action = 'guide';
     b.id = 'smuggled';
     document.body.append(b);
   });
   await page.click('#smuggled');
   await page.waitForTimeout(300);
-  assert.equal(downloads.length, 0, 'no show pack downloads in Lite');
+  assert.equal(downloads.length, 0, 'no hanging guide downloads in Lite');
   assert.match(await page.textContent('#toast'), /Pro/, 'and the toast says why');
 
   await page.evaluate(() => document.querySelector('#smuggled')?.remove());
   // Switch to Pro from the lock itself.
-  await page.locator('[data-pro-lock="showPack"] [data-action="tier-pro"]').click();
+  await page.locator('[data-pro-lock="guide"] [data-action="tier-pro"]').click();
   assert.equal(await page.evaluate(() => window.__booth.tier), 'pro');
-  assert.equal(await page.locator('[data-action="show-pack"]').count(), 1, 'Pro again: the show pack is back');
+  assert.equal(await page.locator('[data-action="guide"]').count(), 1, 'Pro again: the guide is back');
 
   // ---- The phone --------------------------------------------------------
   await page.setViewportSize({ width: 390, height: 844 });

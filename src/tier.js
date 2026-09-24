@@ -29,7 +29,6 @@ export const TIER_KEY = "booth.tier";
  */
 export const PRO_FEATURES = {
   row: "Booth row",
-  showPack: "Show pack",
   guide: "Hanging guide",
   video: "Video export",
   templates: "Booth templates",
@@ -39,8 +38,6 @@ export const PRO_FEATURES = {
   elevations: "Elevations to scale",
   box: "Draw a box",
   glb: "3D model import and export",
-  hall: "Hall planner",
-  power: "Power and rentals sheet",
 };
 
 /**
@@ -50,7 +47,6 @@ export const PRO_FEATURES = {
  * hit, a keyboard shortcut — still does nothing but say why.
  */
 export const PRO_ACTIONS = {
-  "show-pack": "showPack",
   guide: "guide",
   "export-video": "video",
   "batch-export": "video",
@@ -78,11 +74,6 @@ export const PRO_ACTIONS = {
   "draw-box": "box",
   "upload-model": "glb",
   "export-glb": "glb",
-  "hall-start": "hall",
-  "hall-map": "hall",
-  "hall-csv": "hall",
-  "hall-mine": "hall",
-  "power-sheet": "power",
 };
 
 export const resolveTier = (tier) => (TIERS[tier] ? tier : DEFAULT_TIER);

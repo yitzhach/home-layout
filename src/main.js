@@ -154,12 +154,9 @@ import { ALIGN_MODES, alignWorks, distributeWorks } from "./align.js";
 import { MAX_VIEWS, STEP, STRIDE, TAGS, newView } from "./views.js";
 import { ACCESSIBLE, checkClearance } from "./clearance.js";
 import { elevationsHTML } from "./elevations.js";
-import { HALL_LIMITS, MAX_HALL_BOOTHS, STATUSES, boothOf, hallCSV, hallHTML, hallLayout, hallSVG, hallTotals, newHall } from "./hall.js";
-import { CIRCUIT_WATTS, powerHTML, powerLines, powerTotals } from "./power.js";
 import { FOOTPRINTS, SHOWS, STARTERS, fromTemplate, quickStart, templateOf } from "./quickstart.js";
 import { PhotoEditor } from "./photo.js";
 import { hangingGuide } from "./guide.js";
-import { showPack } from "./showpack.js";
 import { dedupe, fold, rankTools } from "./toolsearch.js";
 import { PRO_FEATURES, TIERS, actionFeature, can, readTier, resolveTier, writeTier } from "./tier.js";
 async function boot() {
@@ -250,10 +247,6 @@ async function boot() {
     // Tags hidden right now — see src/views.js. View state of the moment,
     // never saved: a booth should never reopen with its art switched off.
     hiddenTags = new Set(),
-    // The hall planner's selected booth, by number: view state.
-    hallSelected = null,
-    // General-purpose outlets the power sheet counts — a phone, a card reader.
-    powerOutlets = 1,
     // Which booth of the row new artwork is hung in, by its slot id; null is
     // this booth. A view setting: it says where the next tap puts a work, not
     // anything about the booth itself.
@@ -373,7 +366,7 @@ async function boot() {
   selected = p.art[0]?.id;
   document.querySelector("#app").innerHTML =
     `<header><a class="brand" href="#" aria-label="Booth Studio">${icon("box")}<span>Artist OS</span></a><span class="app-badge">Booth Studio</span><div class="tool-search"><span aria-hidden="true">⌕</span><input id="tool-search" type="search" placeholder="Find a tool…" aria-label="Find a tool" title="Find a tool by name · press / to jump here" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="tool-results" aria-expanded="false"/><ul id="tool-results" role="listbox" aria-label="Matching tools" hidden></ul></div><div class="project"><input id="project-name" aria-label="Project name" maxlength="120" value="${e(p.name)}"/>${icon("chevron-down")}</div><div class="save-status" id="save-status" role="status">Opening…</div>${btn("help", "Help", "help-circle", "icon-only")}<div class="avatar">IA</div></header>
-<div class="workspace"><aside class="library" id="library"></aside><main class="editor"><div class="toolbar"><div class="toolgroup">${btn("select", "Select", "mouse-pointer-2", "active")}${btn("move", "Move", "move")}${btn("snap", "Snap 1″", "grid-2x2", "active")}${btn("measure", "Measure", "ruler")}${btn("walk", "Walk", "footprints")}${btn("draw-box", "Box", "square")}${btn("draft", "Fast edit", "zap")}${btn("draft-lock", "Fast edit: follows the gesture", "lock", "draft-lock")}</div><div class="toolgroup">${btn("undo", "Undo", "undo-2", "icon-only")}${btn("redo", "Redo", "redo-2", "icon-only")}</div><div class="mode-switch"><button data-action="mode-3d">3D booth</button><button data-action="mode-photo">Photo</button></div>${btn("export-tab", "Export", "download", "export-top")}</div><div class="viewport"><div id="scene"></div><div id="photo" hidden></div><div class="scene-label"><span class="eyebrow" id="mode-label">MEASURED WORKSPACE</span><strong id="scene-title"></strong><span id="scene-subtitle"></span></div><div id="photo-empty" hidden><div>${icon("image-plus")}<h2>Start with your booth shot</h2><p>Add artwork and adjust its four corners to match the wall perspective.</p>${btn("upload-photo", "Upload booth photo", "plus", "primary")}</div></div><div class="walk-pad" hidden><button data-walk="forward" aria-label="Step forward">▲</button><button data-walk="left" aria-label="Step left">◀</button><button data-walk="back" aria-label="Step back">▼</button><button data-walk="right" aria-label="Step right">▶</button><button data-action="walk" class="walk-exit" aria-label="Stop walking">Done</button></div><div class="viewport-bottom"><div class="view-switch" id="view-switch"><button data-view="perspective" class="active">Perspective</button><button data-view="back">Back</button><button data-view="left">Left</button><button data-view="right">Right</button><button data-view="plan">Plan</button></div><label class="saved-view-pick" hidden><span>View</span><select id="saved-view" aria-label="Go to a saved view"></select></label><div class="zoom-controls"><span class="zoom-label">Zoom</span>${btn("zoom-out", "Zoom out", "minus", "icon-only")}${btn("zoom-in", "Zoom in", "plus", "icon-only")}${btn("reset-view", "Reset view", "rotate-ccw", "icon-only")}</div></div></div><div class="statusbar"><span id="gesture-hint">Drag to orbit · scroll or +/− to zoom · right-drag to pan</span><label class="preview-quality" title="Preview quality: how many pixels the viewport draws for each one on screen. Exports are never affected."><span>Preview</span><select id="quality-quick" aria-label="Preview quality"></select><output id="quality-now"></output></label><span id="selection-status"></span></div></main><aside class="inspector"><button class="sheet-toggle" data-action="sheet-toggle" aria-label="Fold the panel away" title="Fold the panel away"><span>Fold</span></button><div class="inspector-tabs">${["art", "layout", "show", "walls", "lighting", "video", "hall", "export"].map((t, i) => `<button data-tab="${t}">${icon(["image", "layout-panel-left", "building-2", "columns-2", "lightbulb", "video", "map", "download"][i])}<span>${["Artwork", "Layout", "Art show", "Walls", "Lighting", "Video", "Hall", "Export"][i]}</span></button>`).join("")}</div><div id="inspector-content"></div></aside></div><footer><span class="footer-brand">${icon("box")} BOOTH STUDIO <small>Prototype 01</small><small id="build-stamp" title="Version ${BUILD.version} · built ${BUILD.time} · commit ${BUILD.commit}">v${BUILD.version} · ${BUILD.short} UTC · ${BUILD.commit}</small></span><span>Your images. Your space. Your arrangement.</span><span id="network">Local workspace</span></footer><input type="file" id="art-input" accept="image/jpeg,image/png" multiple hidden/><input type="file" id="replace-input" accept="image/jpeg,image/png" hidden/><input type="file" id="photo-input" accept="image/jpeg,image/png" hidden/><input type="file" id="surround-input" accept="image/jpeg,image/png" hidden/><input type="file" id="ground-input" accept="image/jpeg,image/png" hidden/><input type="file" id="underlay-input" accept="image/jpeg,image/png" hidden/><input type="file" id="model-input" accept=".glb,model/gltf-binary" hidden/><input type="file" id="backup-input" accept=".json,.booth" hidden/><div id="toast" role="status"></div><dialog id="dialog"><div id="dialog-content"></div></dialog><dialog id="image-editor"><div id="image-editor-content"></div></dialog><dialog id="timeline-dialog" class="timeline-dialog"><div id="timeline-content"></div></dialog>`;
+<div class="workspace"><aside class="library" id="library"></aside><main class="editor"><div class="toolbar"><div class="toolgroup">${btn("select", "Select", "mouse-pointer-2", "active")}${btn("move", "Move", "move")}${btn("snap", "Snap 1″", "grid-2x2", "active")}${btn("measure", "Measure", "ruler")}${btn("walk", "Walk", "footprints")}${btn("draw-box", "Box", "square")}${btn("draft", "Fast edit", "zap")}${btn("draft-lock", "Fast edit: follows the gesture", "lock", "draft-lock")}</div><div class="toolgroup">${btn("undo", "Undo", "undo-2", "icon-only")}${btn("redo", "Redo", "redo-2", "icon-only")}</div><div class="mode-switch"><button data-action="mode-3d">3D booth</button><button data-action="mode-photo">Photo</button></div>${btn("export-tab", "Export", "download", "export-top")}</div><div class="viewport"><div id="scene"></div><div id="photo" hidden></div><div class="scene-label"><span class="eyebrow" id="mode-label">MEASURED WORKSPACE</span><strong id="scene-title"></strong><span id="scene-subtitle"></span></div><div id="photo-empty" hidden><div>${icon("image-plus")}<h2>Start with your booth shot</h2><p>Add artwork and adjust its four corners to match the wall perspective.</p>${btn("upload-photo", "Upload booth photo", "plus", "primary")}</div></div><div class="walk-pad" hidden><button data-walk="forward" aria-label="Step forward">▲</button><button data-walk="left" aria-label="Step left">◀</button><button data-walk="back" aria-label="Step back">▼</button><button data-walk="right" aria-label="Step right">▶</button><button data-action="walk" class="walk-exit" aria-label="Stop walking">Done</button></div><div class="viewport-bottom"><div class="view-switch" id="view-switch"><button data-view="perspective" class="active">Perspective</button><button data-view="back">Back</button><button data-view="left">Left</button><button data-view="right">Right</button><button data-view="plan">Plan</button></div><label class="saved-view-pick" hidden><span>View</span><select id="saved-view" aria-label="Go to a saved view"></select></label><div class="zoom-controls"><span class="zoom-label">Zoom</span>${btn("zoom-out", "Zoom out", "minus", "icon-only")}${btn("zoom-in", "Zoom in", "plus", "icon-only")}${btn("reset-view", "Reset view", "rotate-ccw", "icon-only")}</div></div></div><div class="statusbar"><span id="gesture-hint">Drag to orbit · scroll or +/− to zoom · right-drag to pan</span><label class="preview-quality" title="Preview quality: how many pixels the viewport draws for each one on screen. Exports are never affected."><span>Preview</span><select id="quality-quick" aria-label="Preview quality"></select><output id="quality-now"></output></label><span id="selection-status"></span></div></main><aside class="inspector"><button class="sheet-toggle" data-action="sheet-toggle" aria-label="Fold the panel away" title="Fold the panel away"><span>Fold</span></button><div class="inspector-tabs">${["art", "layout", "show", "walls", "lighting", "video", "export"].map((t, i) => `<button data-tab="${t}">${icon(["image", "layout-panel-left", "building-2", "columns-2", "lightbulb", "video", "download"][i])}<span>${["Artwork", "Layout", "Art show", "Walls", "Lighting", "Video", "Export"][i]}</span></button>`).join("")}</div><div id="inspector-content"></div></aside></div><footer><span class="footer-brand">${icon("box")} BOOTH STUDIO <small>Prototype 01</small><small id="build-stamp" title="Version ${BUILD.version} · built ${BUILD.time} · commit ${BUILD.commit}">v${BUILD.version} · ${BUILD.short} UTC · ${BUILD.commit}</small></span><span>Your images. Your space. Your arrangement.</span><span id="network">Local workspace</span></footer><input type="file" id="art-input" accept="image/jpeg,image/png" multiple hidden/><input type="file" id="replace-input" accept="image/jpeg,image/png" hidden/><input type="file" id="photo-input" accept="image/jpeg,image/png" hidden/><input type="file" id="surround-input" accept="image/jpeg,image/png" hidden/><input type="file" id="ground-input" accept="image/jpeg,image/png" hidden/><input type="file" id="underlay-input" accept="image/jpeg,image/png" hidden/><input type="file" id="model-input" accept=".glb,model/gltf-binary" hidden/><input type="file" id="backup-input" accept=".json,.booth" hidden/><div id="toast" role="status"></div><dialog id="dialog"><div id="dialog-content"></div></dialog><dialog id="image-editor"><div id="image-editor-content"></div></dialog><dialog id="timeline-dialog" class="timeline-dialog"><div id="timeline-content"></div></dialog>`;
   let scene;
   try {
     scene = new BoothScene(
@@ -1672,31 +1665,6 @@ async function boot() {
       .join("")}</div></section>`;
   }
   /**
-   * Hall (Pro): the whole show's floor, for a promoter — rows of numbered
-   * booths on aisles, each with an exhibitor, a status and a price, a map to
-   * print and a list to send. Kept in the project as `p.hall`.
-   */
-  function hallPanel() {
-    const intro = "Plan a whole show: rows of numbered booths on aisles, each with an exhibitor, a status and a price. Print the map, send the exhibitor list.";
-    if (!allowed("hall")) return proLock("hall", intro + " Part of Booth Studio Pro.");
-    const h = p.hall;
-    if (!h) return `<p class="muted">${intro}</p>${btn("hall-start", "Start a hall plan", "map", "primary wide")}`;
-    const booths = hallLayout(h);
-    if (hallSelected !== null && !booths.some((b) => b.number === hallSelected)) hallSelected = null;
-    const t = hallTotals(h);
-    const f = (label, key, unit = "", step = 1) => field(label, key, h[key], ...HALL_LIMITS[key], step, unit, "hallplan", "Hall " + label);
-    const chosen = hallSelected !== null ? boothOf(h, hallSelected) : null;
-    const editor = chosen
-      ? `<section class="hall-booth"><h3>Booth ${hallSelected}${h.mine === hallSelected ? ' <span class="badge">Yours</span>' : ""}</h3><label class="setting-label">Status<select data-field="status" data-scope="hallbooth" aria-label="Booth status">${Object.entries(STATUSES).map(([k, v]) => `<option value="${k}" ${chosen.status === k ? "selected" : ""}>${e(v.label)}</option>`).join("")}</select></label><label class="setting-label">Exhibitor<input type="text" data-field="name" data-scope="hallbooth" aria-label="Exhibitor" maxlength="120" value="${e(chosen.name)}"/></label>${field("Price", "price", chosen.price || 0, ...HALL_LIMITS.price, 1, "$", "hallbooth", "Booth price")}<label class="setting-label">Note<input type="text" data-field="note" data-scope="hallbooth" aria-label="Booth note" maxlength="300" value="${e(chosen.note)}"/></label><div class="button-row">${btn("hall-mine", h.mine === hallSelected ? "Not my booth" : "This is my booth", "box")}${btn("hall-deselect", "Done", "check")}</div></section>`
-      : `<p class="muted">Tap a booth on the map to set its exhibitor, status and price.</p>`;
-    return `<section><h3>Map <span>${t.booths} booths</span></h3><div class="hall-map-wrap">${hallSVG(h, { selected: hallSelected, interactive: true })}</div><p class="hall-totals">${t.sold} sold · ${t.held} held · ${t.open} open${t.soldValue ? ` · sold $${Math.round(t.soldValue).toLocaleString("en-US")}` : ""}${t.heldValue ? ` · held $${Math.round(t.heldValue).toLocaleString("en-US")}` : ""}</p></section>${editor}<section><h3>Layout <span>inches</span></h3><div class="field-pair">${f("Rows", "rows")}${f("Booths per row", "perRow")}</div><div class="field-pair">${f("Booth width", "boothWidth", "in")}${f("Booth depth", "boothDepth", "in")}</div>${f("Aisle width", "aisle", "in")}<label class="check-field"><input type="checkbox" data-field="backToBack" data-scope="hallplan" ${h.backToBack ? "checked" : ""}/>Rows back to back, in pairs</label>${f("First booth number", "start")}${f("Default price", "price", "$")}<p class="muted">Up to ${MAX_HALL_BOOTHS} booths. Aisles under 10′ are tight for a crowd; many fire marshals ask for 10′ main aisles.</p></section><section><h3>Share it</h3><div class="button-row">${btn("hall-map", "Download hall map", "download")}${btn("hall-csv", "Exhibitor list (CSV)", "download")}</div>${btn("hall-delete", "Delete the hall plan", "trash-2", "wide")}</section>`;
-  }
-  /** Export → Power and rentals (Pro): the service desk's two forms. */
-  function powerSection() {
-    const totals = powerTotals(powerLines(p, { outlets: powerOutlets }));
-    return `<section><h3>Power and rentals</h3><p class="muted">What to order from the show: <strong>${totals.watts} W · ${totals.amps} A · ${totals.circuits} circuit${totals.circuits === 1 ? "" : "s"}</strong> of 120 V / 15 A, worked out from the lights, screens and outlets in this booth (circuits loaded to ${CIRCUIT_WATTS} W), and every table, chair and riser on its floor with carpet for it.</p><label class="field"><span>General outlets</span><div><input type="number" id="power-outlets" min="0" max="20" step="1" value="${powerOutlets}" aria-label="General outlets"/><small>ea</small></div></label>${btn("power-sheet", "Download power and rentals sheet", "plug", "wide")}</section>`;
-  }
-  /**
    * Walls → 3D models (Pro): a .glb brought in from SketchUp, Blender or a
    * maker's own scan — a sculpture, a custom display — stood on the floor at
    * a typed height. Kept in the booth like an image, so a backup carries it.
@@ -2075,9 +2043,8 @@ async function boot() {
         ? `<div class="panel-heading"><h2>Video</h2>${icon("video")}</div><div class="empty-inspector"><p>Video records a camera move through the 3D booth. Photo mode has a single photograph and no camera to move, so there is nothing to record. Switch to the 3D booth.</p></div>`
         : `<div class="panel-heading"><h2>Video</h2>${icon("video")}</div><p class="muted">Everything about moving pictures in one place: the move, the clip, the timeline and a batch list. The Export tab keeps the same controls beside the PNG and the guide, and they are the same settings — this is not a second set.</p>${gated("video", videoSection() + batchSection(), "Camera moves, keyframed timelines and batch MP4 export. Part of Booth Studio Pro.")}<section><h3>Stills</h3><p class="muted">The frame you are looking at, as a PNG, without controls or outlines. The full image options are in Export.</p>${btn("export-image", "Export PNG · 4096 px", "download", "wide")}</section>`;
     }
-    if (tab === "hall") html = `<div class="panel-heading"><h2>Hall planner</h2>${icon("map")}</div>${hallPanel()}`;
     if (tab === "export") {
-      html = `<div class="panel-heading"><h2>Export your booth</h2>${icon("download")}</div><p class="muted">A clean image of the current ${p.mode === "photo" ? "photo composition" : "camera view"}, without controls or selection outlines.</p><section><h3>Image size</h3>${p.mode === "photo" ? "" : frameFields("export")}<label class="setting-label">Detail<select id="export-size" aria-label="Export image size">${STILL_SIZES.map((n) => `<option value="${n}" ${exportLong === n ? "selected" : ""}>${n} px on the long side${n <= 1440 ? " · Fast" : n >= 4096 ? " · High resolution" : ""}</option>`).join("")}</select></label><p class="muted">PNG · ${p.mode === "photo" ? "The photograph's own shape. Enlarging a small source cannot restore missing detail." : e(frameNote("export")) + " Preview textures are capped at 2048 px per artwork; originals remain in the backup."}</p>${btn("export-image", "Export PNG", "download", "primary wide")}</section>${p.mode === "photo" ? "" : gated("video", videoSection())}${gated("showPack", `<section><h3>Show pack</h3><p class="muted">For the van: a measured floor plan with every piece numbered and its clearances, the inventory of work with sizes, media and prices, and a packing and load-in checklist worked out from this booth. Open the downloaded HTML to print or save as PDF.</p>${btn("show-pack", "Download show pack", "layers", "wide")}</section>`)}${p.mode === "photo" ? "" : gated("power", powerSection())}${p.mode === "photo" ? "" : gated("glb", `<section><h3>3D model</h3><p class="muted">The booth as a .glb — walls, work, furniture, figures and any models you brought in, in metres — for SketchUp, Blender or an AR viewer. Surroundings, lights and the drawn shadows stay behind.</p>${btn("export-glb", "Download booth as .glb", "box", "wide")}</section>`)}${p.mode === "photo" ? "" : gated("elevations", `<section><h3>Elevations to scale</h3><p class="muted">A floor plan and every wall with work on it, drawn at a real architectural scale with its dimension chain and centre lines — the drawing a carpenter or installer works from. Print at 100%.</p>${btn("elevations", "Download elevations", "ruler", "wide")}</section>`)}${gated("guide", `<section><h3>Installation guide</h3><p class="muted">Measured wall elevations, panel sizes, and left/bottom placement references. Open the downloaded HTML to print or save as PDF. Photo overlays are excluded.</p>${btn("guide", "Download hanging guide", "layout-panel-left", "wide")}</section>`)}<section><h3>Keep your work</h3>${btn("backup", "Download project backup", "save", "wide")}${btn("import", "Open project backup", "folder-open", "wide")}<p class="muted">Includes original artwork and photo files, booth layout, and lighting.</p></section><section><h3>Preview quality</h3><select id="quality" aria-label="Preview quality (Export)">${qualityOptions()}</select><p class="muted">Auto starts sharp and lowers the detail while it measures this computer drawing slower than it should. The light bar's shadows are drawn live at High detail only; exports always include them. The same menu is under the viewport, beside what it is drawing at now.</p></section>`;
+      html = `<div class="panel-heading"><h2>Export your booth</h2>${icon("download")}</div><p class="muted">A clean image of the current ${p.mode === "photo" ? "photo composition" : "camera view"}, without controls or selection outlines.</p><section><h3>Image size</h3>${p.mode === "photo" ? "" : frameFields("export")}<label class="setting-label">Detail<select id="export-size" aria-label="Export image size">${STILL_SIZES.map((n) => `<option value="${n}" ${exportLong === n ? "selected" : ""}>${n} px on the long side${n <= 1440 ? " · Fast" : n >= 4096 ? " · High resolution" : ""}</option>`).join("")}</select></label><p class="muted">PNG · ${p.mode === "photo" ? "The photograph's own shape. Enlarging a small source cannot restore missing detail." : e(frameNote("export")) + " Preview textures are capped at 2048 px per artwork; originals remain in the backup."}</p>${btn("export-image", "Export PNG", "download", "primary wide")}</section>${p.mode === "photo" ? "" : gated("video", videoSection())}${p.mode === "photo" ? "" : gated("glb", `<section><h3>3D model</h3><p class="muted">The booth as a .glb — walls, work, furniture, figures and any models you brought in, in metres — for SketchUp, Blender or an AR viewer. Surroundings, lights and the drawn shadows stay behind.</p>${btn("export-glb", "Download booth as .glb", "box", "wide")}</section>`)}${p.mode === "photo" ? "" : gated("elevations", `<section><h3>Elevations to scale</h3><p class="muted">A floor plan and every wall with work on it, drawn at a real architectural scale with its dimension chain and centre lines — the drawing a carpenter or installer works from. Print at 100%.</p>${btn("elevations", "Download elevations", "ruler", "wide")}</section>`)}${gated("guide", `<section><h3>Installation guide</h3><p class="muted">Measured wall elevations, panel sizes, and left/bottom placement references. Open the downloaded HTML to print or save as PDF. Photo overlays are excluded.</p>${btn("guide", "Download hanging guide", "layout-panel-left", "wide")}</section>`)}<section><h3>Keep your work</h3>${btn("backup", "Download project backup", "save", "wide")}${btn("import", "Open project backup", "folder-open", "wide")}<p class="muted">Includes original artwork and photo files, booth layout, and lighting.</p></section><section><h3>Preview quality</h3><select id="quality" aria-label="Preview quality (Export)">${qualityOptions()}</select><p class="muted">Auto starts sharp and lowers the detail while it measures this computer drawing slower than it should. The light bar's shadows are drawn live at High detail only; exports always include them. The same menu is under the viewport, beside what it is drawing at now.</p></section>`;
     }
     return html;
   }
@@ -2728,13 +2695,6 @@ async function boot() {
         p.photo.layers = p.photo.layers.filter((l) => l.id !== photoSelected);
         p.photo.layers.push(l);
       }),
-    "show-pack": () => {
-      download(
-        new Blob([showPack(p)], { type: "text/html" }),
-        safeName() + "-show-pack.html",
-      );
-      toast("Show pack downloaded: floor plan, inventory and packing list. Open it to print or save as PDF.");
-    },
     guide: () => {
       download(
         new Blob([hangingGuide(p)], { type: "text/html" }),
@@ -2969,41 +2929,6 @@ async function boot() {
     // slider point, because the stored unit is what the light reads.
     "tier-pro": () => setTier("pro"),
     walk: () => setWalking(!walking),
-    "hall-start": () => {
-      mutate(() => {
-        p.hall = newHall();
-        tab = "hall";
-      });
-      toast("Hall plan started: two back-to-back rows of eight 10 × 10s. Change the layout below; tap a booth to sell it.");
-    },
-    "hall-delete": () =>
-      confirmAction("Delete the hall plan?", "Every booth's exhibitor, status and price goes with it. Undo brings it back.", () => {
-        mutate(() => delete p.hall);
-        hallSelected = null;
-      }),
-    "hall-deselect": () => {
-      hallSelected = null;
-      renderInspector();
-    },
-    "hall-mine": () =>
-      mutate(() => {
-        if (p.hall.mine === hallSelected) delete p.hall.mine;
-        else p.hall.mine = hallSelected;
-      }),
-    "hall-map": () => {
-      if (!p.hall) return;
-      download(new Blob([hallHTML(p.hall, p.name)], { type: "text/html" }), safeName() + "-hall-map.html");
-      toast("Hall map downloaded: the map, a legend, totals and every booth. Open it to print.");
-    },
-    "hall-csv": () => {
-      if (!p.hall) return;
-      download(new Blob([hallCSV(p.hall)], { type: "text/csv" }), safeName() + "-exhibitors.csv");
-      toast("Exhibitor list downloaded as CSV — it opens in any spreadsheet.");
-    },
-    "power-sheet": () => {
-      download(new Blob([powerHTML(p, { outlets: powerOutlets })], { type: "text/html" }), safeName() + "-power-and-rentals.html");
-      toast("Power and rentals sheet downloaded. Correct anything on the printout before sending it to the show.");
-    },
     "draw-box": () => setDrawingBox(!scene?.drawingBox),
     "upload-model": () => document.querySelector("#model-input").click(),
     "export-glb": async () => {
@@ -3136,21 +3061,6 @@ async function boot() {
       );
     });
   }
-  // A booth on the hall map is an SVG group, not a button.
-  document.addEventListener("click", (ev) => {
-    const cell = ev.target.closest?.("[data-hall-booth]");
-    if (!cell) return;
-    hallSelected = Number(cell.dataset.hallBooth);
-    renderInspector();
-  });
-  document.addEventListener("keydown", (ev) => {
-    const cell = ev.target.closest?.("[data-hall-booth]");
-    if (!cell || (ev.key !== "Enter" && ev.key !== " ")) return;
-    ev.preventDefault();
-    hallSelected = Number(cell.dataset.hallBooth);
-    renderInspector();
-    document.querySelector(`[data-hall-booth="${hallSelected}"]`)?.focus();
-  });
   document.addEventListener("click", (ev) => {
     const b = ev.target.closest("button");
     if (!b) return;
@@ -3446,10 +3356,6 @@ async function boot() {
               ? (p.booth.hall = hallSpec(p.booth))
             : scope === "underlay"
               ? p.booth.underlay
-            : scope === "hallplan"
-              ? p.hall
-            : scope === "hallbooth"
-              ? p.hall && hallSelected !== null ? (p.hall.booths[hallSelected] ||= {}) : null
             : scope?.startsWith("model-")
               ? (p.booth.models || []).find((m) => m.id === scope.slice(6))
             : SHADOW_KINDS.some((kind) => SHADOW_FIELD[kind] === scope)
@@ -3678,11 +3584,6 @@ async function boot() {
       setDraft(el.checked);
       return;
     }
-    if (el.id === "power-outlets") {
-      powerOutlets = Math.max(0, Math.min(20, Math.round(Number(el.value) || 0)));
-      renderInspector();
-      return;
-    }
     if (el.dataset.tag !== undefined) {
       if (el.checked) hiddenTags.delete(el.dataset.tag);
       else hiddenTags.add(el.dataset.tag);
@@ -3862,12 +3763,6 @@ async function boot() {
         p.art = p.art.map((a) => constrain(p, a));
         p.booth.panels = boothPanels(p).map((panel) => constrainPanel(p, panel));
         p.booth.pedestals = boothPedestals(p).map((ped) => constrainPedestal(p, ped));
-      }
-      // A hall has at most MAX_HALL_BOOTHS booths: whichever of rows and
-      // booths per row was just typed wins, and the other gives way.
-      if (scope === "hallplan" && (key === "rows" || key === "perRow")) {
-        const other = key === "rows" ? "perRow" : "rows";
-        p.hall[other] = Math.min(p.hall[other], Math.floor(MAX_HALL_BOOTHS / p.hall[key]));
       }
       // The panel module is what the walls are rebuilt from, and a linked
       // booth rebuilds as it is typed rather than waiting for the button.
@@ -4133,7 +4028,7 @@ async function boot() {
   // added to a panel is findable without anyone adding it to a list, and a
   // control the current booth does not show (the light bar on a pop-up) is
   // not offered. It is built when the box is focused and dropped on blur.
-  const TAB_NAMES = { art: "Artwork", layout: "Layout", show: "Art show", walls: "Walls", lighting: "Lighting", video: "Video", hall: "Hall", export: "Export" };
+  const TAB_NAMES = { art: "Artwork", layout: "Layout", show: "Art show", walls: "Walls", lighting: "Lighting", video: "Video", export: "Export" };
   const FINDABLE = "h3, h4, label, button[data-action]";
   let toolIndex = null,
     toolHits = [],
@@ -4441,9 +4336,6 @@ async function boot() {
       },
       get walking() {
         return walking;
-      },
-      get hallSelected() {
-        return hallSelected;
       },
       // What the light bar would hang, computed from the booth. The view test
       // reads it against the lights the scene actually built.
