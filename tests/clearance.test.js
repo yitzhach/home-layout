@@ -97,7 +97,7 @@ test("the underlay is optional and must name an image in the backup", () => {
   for (const bad of [{ ...p.booth.underlay, asset: "missing" }, { ...p.booth.underlay, opacity: 2 }, { ...p.booth.underlay, width: 1 }, "plan"]) {
     const q = structuredClone(p);
     q.booth.underlay = bad;
-    assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(q), /not a valid Home Layout/);
   }
 });
 
@@ -106,4 +106,27 @@ test("a floor plan's image carries its own role, and a booth with one reopens", 
   p.assets.plan = { name: "plan.png", width: 1000, height: 800, role: "underlay", data: "data:image/png;base64,AA" };
   p.booth.underlay = { asset: "plan", width: 1200, x: 0, z: 0, rotation: 0, opacity: 0.6, on: true };
   assert.doesNotThrow(() => validateProject(JSON.parse(JSON.stringify(p))));
+});
+
+test("a home's walls are checked, and a rug or wall cabinets are never in the way", async () => {
+  const { homeProject } = await import("../src/model.js");
+  const p = homeProject();
+  const living = p.booth.rooms[0];
+  const north = living.z - living.depth / 2;
+  // A bookcase flush against the north wall touches it; one pushed 6″ into
+  // it stands in it; one 20″ off it leaves a gap too tight to pass.
+  p.booth.pedestals = [{ ...ped("flush", living.x, north + 6, 36, 12), kind: "bookcase" }];
+  assert.equal(checkClearance(p).filter((x) => x.kind === "overlap" || x.kind === "tight").length, 0);
+  p.booth.pedestals = [{ ...ped("into", living.x, north, 36, 12), kind: "bookcase" }];
+  assert.equal(checkClearance(p).filter((x) => x.kind === "overlap").length, 1);
+  p.booth.pedestals = [{ ...ped("tight", living.x, north + 26, 36, 12), kind: "bookcase" }];
+  assert.equal(checkClearance(p).filter((x) => x.kind === "tight").length, 1);
+  // A rug under a sofa, cabinets over a counter.
+  p.booth.pedestals = [
+    { ...ped("sofa", living.x, living.z, 84, 36), kind: "sofa" },
+    { ...ped("rug", living.x, living.z, 96, 60), kind: "rug" },
+    { ...ped("counter", living.x, north + 12.5, 96, 25), kind: "counter" },
+    { ...ped("cab", living.x, north + 6, 72, 12), kind: "wallcab" },
+  ];
+  assert.equal(checkClearance(p).filter((x) => x.kind === "overlap").length, 0);
 });

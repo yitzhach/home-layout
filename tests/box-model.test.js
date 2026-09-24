@@ -15,12 +15,12 @@ test("a drawn box may be a stage: bigger than any piece of furniture", () => {
   for (const bad of [{ width: BOX_LIMITS.width[1] + 1 }, { height: 0 }, { depth: "big" }]) {
     const q = blankProject();
     q.booth.pedestals = [box(bad)];
-    assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(q), /not a valid Home Layout/);
   }
   // Furniture keeps its own limits: a 240″ table is still refused.
   const q = blankProject();
   q.booth.pedestals = [box({ kind: "table6", width: 240 })];
-  assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(q), /not a valid Home Layout/);
 });
 
 const glb = "data:model/gltf-binary;base64,Z2xURgIAAAA=";
@@ -36,18 +36,18 @@ test("a model names a model asset in the backup", () => {
   ]) {
     const q = structuredClone(p);
     q.booth.models = [bad];
-    assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(q), /not a valid Home Layout/);
   }
   const many = structuredClone(p);
   many.booth.models = Array.from({ length: MAX_MODELS + 1 }, (_, i) => ({ ...p.booth.models[0], id: "m" + i }));
-  assert.throws(() => validateProject(many), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(many), /not a valid Home Layout/);
 });
 
 test("a model asset must be glTF, and an image asset must still be an image", () => {
   const p = blankProject();
   p.assets.m = { name: "x.glb", width: 1, height: 1, role: "model", data: "data:image/png;base64,AA" };
-  assert.throws(() => validateProject(p), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(p), /not a valid Home Layout/);
   const q = blankProject();
   q.assets.i = { name: "x.png", width: 1, height: 1, role: "artwork", data: glb };
-  assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(q), /not a valid Home Layout/);
 });

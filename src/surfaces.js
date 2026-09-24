@@ -50,6 +50,18 @@ export const SURFACE_SETS = {
   // Woven polyester at a metre or two per tile; a canvas photographed at four
   // metres would put a weave on the roof you could see from across the hall.
   canvas: { label: "Tent canvas", tileMetres: 0.5 },
+  // Room finishes (src/finishes.js). Each is a folder under
+  // assets/textures/ the owner can drop photographs into; until then the
+  // finish is drawn procedurally. tileMetres is the finish's own tile — the
+  // inches FINISH_KINDS gives it, exactly, so a photograph and the drawn
+  // pattern tile a wall the same.
+  "finish-wood": { label: "Wood planks", tileMetres: 1.2192 },
+  "finish-tile": { label: "Tile", tileMetres: 0.6096 },
+  "finish-stone": { label: "Stone", tileMetres: 1.2192 },
+  "finish-carpet": { label: "Carpet", tileMetres: 0.6096 },
+  "finish-concrete": { label: "Concrete", tileMetres: 1.8288 },
+  "finish-brick": { label: "Brick", tileMetres: 0.8128 },
+  "finish-panel": { label: "Wood panelling", tileMetres: 1.2192 },
 };
 
 // Tent geometry carries its UVs in metres, so one UV unit is one metre and the

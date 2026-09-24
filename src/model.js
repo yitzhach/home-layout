@@ -199,7 +199,7 @@ export const isShown = (item) => item?.hidden !== true;
 export const PEDESTAL_PREFIX = "pedestal:";
 // Raised from 8 when furniture joined the list: a 10 × 20 with two tables,
 // chairs, a bin and a banner is a dozen things before a single pedestal.
-export const MAX_PEDESTALS = 24;
+export const MAX_PEDESTALS = 120;
 /** The pedestal asked for: 44″ tall, 12 × 12, with a solid top. */
 export const PEDESTAL = { width: 12, depth: 12, height: 44, color: "#f4f3f0" };
 /**
@@ -214,25 +214,58 @@ export const PEDESTAL = { width: 12, depth: 12, height: 44, color: "#f4f3f0" };
  * pedestal's.
  */
 export const FURNITURE = {
-  pedestal: { label: "Pedestal", ...PEDESTAL },
-  table6: { label: "Table 6′ with cloth", width: 72, depth: 30, height: 30, color: "#23262b" },
-  table8: { label: "Table 8′ with cloth", width: 96, depth: 30, height: 30, color: "#23262b" },
-  counter: { label: "Counter", width: 40, depth: 20, height: 40, color: "#f4f3f0" },
-  chair: { label: "Chair", width: 18, depth: 18, height: 33, color: "#2e3034" },
-  stool: { label: "Stool", width: 16, depth: 16, height: 30, color: "#2e3034" },
-  bin: { label: "Print bin", width: 30, depth: 20, height: 32, color: "#8a6a4a" },
-  // A gridwall panel is a sheet of wire; its depth is the footprint of its feet.
-  gridwall: { label: "Gridwall panel", width: 24, depth: 12, height: 72, color: "#1e1f22" },
-  banner: { label: "Banner stand", width: 33, depth: 12, height: 80, color: "#91beff" },
-  tv: { label: "Screen on a stand", width: 44, depth: 20, height: 72, color: "#15171a" },
-  // Draw-a-box: a plain block at any size — a riser, a plinth, a stage, a
-  // custom counter. Drawn on the floor with the Box tool, then pulled up.
-  box: { label: "Box · riser, plinth or stage", width: 48, depth: 24, height: 12, color: "#e9e6df" },
+  // The home set, listed in the picker by the room it usually stands in.
+  // Sizes are the common ones — a queen bed, a three-seat sofa, a 25″-deep
+  // kitchen counter at 36″ — and all of them are typed over afterwards.
+  // Height is always the top of the piece as drawn: a bed's is its
+  // headboard, a TV console's the top of its screen.
+  sofa: { label: "Sofa", room: "Living", wall: true, width: 84, depth: 36, height: 34, color: "#7b8590" },
+  armchair: { label: "Armchair", room: "Living", width: 34, depth: 34, height: 34, color: "#8c8577" },
+  coffee: { label: "Coffee table", room: "Living", width: 48, depth: 24, height: 18, color: "#8a6a4a" },
+  media: { label: "TV on a media console", room: "Living", wall: true, width: 60, depth: 18, height: 50, color: "#5a4636", limits: { width: [36, 120], depth: [12, 30], height: [30, 90] } },
+  bookcase: { label: "Bookcase", room: "Living", wall: true, width: 36, depth: 12, height: 72, color: "#8a6a4a" },
+  // A rug lies under the furniture, so clearance never reports it as
+  // standing in anything; see `layer`.
+  rug: { label: "Rug", room: "Living", width: 96, depth: 60, height: 0.5, color: "#b9a58a", layer: "under", limits: { width: [24, 240], depth: [24, 240], height: [0.25, 2] } },
+  dining: { label: "Dining table", room: "Dining", width: 72, depth: 36, height: 30, color: "#8a6a4a" },
+  chair: { label: "Chair", room: "Dining", width: 18, depth: 18, height: 33, color: "#2e3034" },
+  bed: { label: "Bed · queen", room: "Bedroom", wall: true, width: 60, depth: 80, height: 44, color: "#9aa3ab", limits: { width: [30, 90], depth: [60, 96], height: [18, 72] } },
+  nightstand: { label: "Nightstand", room: "Bedroom", wall: true, width: 20, depth: 16, height: 24, color: "#8a6a4a" },
+  dresser: { label: "Dresser", room: "Bedroom", wall: true, width: 60, depth: 20, height: 32, color: "#8a6a4a" },
+  desk: { label: "Desk", room: "Office", wall: true, width: 60, depth: 30, height: 30, color: "#8a6a4a" },
+  counter: { label: "Kitchen counter", room: "Kitchen", wall: true, width: 96, depth: 25, height: 36, color: "#e9e6df", limits: { width: [12, 240], depth: [12, 40], height: [24, 48] } },
+  // Upper cabinets hang over the counter, so like a rug they share its
+  // floor space without standing in it. The height is to their top.
+  wallcab: { label: "Wall cabinets", room: "Kitchen", wall: true, width: 72, depth: 12, height: 84, color: "#e9e6df", layer: "over", limits: { width: [12, 240], depth: [9, 24], height: [48, 108] } },
+  fridge: { label: "Refrigerator", room: "Kitchen", wall: true, width: 36, depth: 30, height: 70, color: "#d9dbdd" },
+  range: { label: "Range", room: "Kitchen", wall: true, width: 30, depth: 26, height: 36, color: "#cfd2d4" },
+  vanity: { label: "Bathroom vanity", room: "Bath", wall: true, width: 36, depth: 21, height: 34, color: "#e9e6df" },
+  toilet: { label: "Toilet", room: "Bath", wall: true, width: 20, depth: 28, height: 30, color: "#f7f7f5" },
+  bathtub: { label: "Bathtub", room: "Bath", wall: true, width: 60, depth: 30, height: 20, color: "#f7f7f5", limits: { width: [48, 84], depth: [26, 44], height: [14, 26] } },
+  tv: { label: "Screen on a stand", room: "Other", width: 44, depth: 20, height: 72, color: "#15171a" },
+  pedestal: { label: "Pedestal", room: "Other", ...PEDESTAL },
+  // Draw-a-box: a plain block at any size — a riser, a plinth, a built-in.
+  // Drawn on the floor with the Box tool, then pulled up.
+  box: { label: "Box · riser, plinth or built-in", room: "Other", width: 48, depth: 24, height: 12, color: "#e9e6df" },
   // A straight flight to the floor above: 7¾″ risers and 10″ treads are the
   // usual residential code, and the height is floor to floor. Its footprint
   // runs up toward −Z, so it climbs away from whoever stands at its foot.
-  stairs: { label: "Stairs · straight flight", width: 36, depth: 130, height: 108, color: "#b48a5e", limits: { width: [24, 96], depth: [40, 240], height: [12, 144] } },
+  stairs: { label: "Stairs · straight flight", room: "Other", width: 36, depth: 130, height: 108, color: "#b48a5e", limits: { width: [24, 96], depth: [40, 240], height: [12, 144] } },
+  // The booth app's pieces. Not offered any more, but a backup that has them
+  // still loads and still draws them.
+  table6: { label: "Table 6′ with cloth", width: 72, depth: 30, height: 30, color: "#23262b", booth: true },
+  table8: { label: "Table 8′ with cloth", width: 96, depth: 30, height: 30, color: "#23262b", booth: true },
+  stool: { label: "Stool", width: 16, depth: 16, height: 30, color: "#2e3034", booth: true },
+  bin: { label: "Print bin", width: 30, depth: 20, height: 32, color: "#8a6a4a", booth: true },
+  // A gridwall panel is a sheet of wire; its depth is the footprint of its feet.
+  gridwall: { label: "Gridwall panel", width: 24, depth: 12, height: 72, color: "#1e1f22", booth: true },
+  banner: { label: "Banner stand", width: 33, depth: 12, height: 80, color: "#91beff", booth: true },
 };
+// `wall: true` is a piece that stands with its back to a wall — a bed's
+// headboard, a counter, a bookcase — so a new one is put against the north
+// wall of the room it is added to rather than in the middle of the floor.
+/** The rooms the furniture picker groups by, in its order. */
+export const FURNITURE_ROOMS = ["Living", "Dining", "Bedroom", "Office", "Kitchen", "Bath", "Other"];
 /** The size limits of one kind of floor piece. */
 export const furnitureLimits = (kind) =>
   kind === "box" ? BOX_LIMITS : FURNITURE[kind]?.limits || { width: [4, 96], depth: [4, 96], height: [6, 96] };
@@ -481,7 +514,7 @@ const finite = (n, min, max) =>
 export function validateProject(p) {
   const fail = () => {
     throw new Error(
-      "This is not a valid Booth Studio v1 backup. Your current project was kept.",
+      "This is not a valid Home Layout backup. Your current project was kept.",
     );
   };
   if (

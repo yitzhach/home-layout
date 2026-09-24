@@ -29,7 +29,9 @@ import { DEFAULT_FRAME, frameSize } from "./framing.js";
 import { AUTO_QUALITY, FrameBudget, startScale, stepDown } from "./adaptive.js";
 import { distanceInches, formatLength, planDimensions } from "./measure.js";
 import { buildFurniture } from "./furniture.js";
-import { WALL, findRoomWall, isRoomKey, wallCorners, wallGaps, wallOpenings, wallPieces } from "./rooms.js";
+import { WALL, findRoom, findRoomWall, isRoomKey, wallBackRoom, wallCorners, wallGaps, wallOpenings, wallPieces } from "./rooms.js";
+import { FINISH_KINDS, KIND_COLORS, ceilingFinish, floorFinish, tiling, wallFinish } from "./finishes.js";
+import { finishTexture } from "./finish-textures.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
 const WALL_SLAB_OFFSET = 0.031;
@@ -307,13 +309,30 @@ function placeShadow(mesh, spec, a) {
     -((a.offset + a.thickness / 2) * IN + 0.003) + (mesh.userData.shadowKind === "under" ? 0.002 : 0.0015),
   );
 }
+/**
+ * How a photographed finish is tinted to the colour chosen for it: the
+ * chosen colour over the kind's usual one, channel by channel, so the usual
+ * colour leaves the photograph exactly as it was shot and a darker choice
+ * stains it darker.
+ */
+function finishTint(f) {
+  const want = new T.Color(f.color),
+    base = new T.Color(KIND_COLORS[f.kind] || "#ffffff");
+  const ch = (a, b) => Math.min(2, b > 0.01 ? a / b : 1);
+  return new T.Color(ch(want.r, base.r), ch(want.g, base.g), ch(want.b, base.b));
+}
 /** Release everything a retired booth group holds on the GPU. */
 function disposeTree(group) {
   group.traverse((o) => {
     o.geometry?.dispose();
     if (o.material) {
       (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) =>
-        { if (m.userData.ownedMap) m.map?.dispose(); m.dispose(); },
+        {
+          if (m.userData.ownedMap) m.map?.dispose();
+          // A photographed finish's relief maps are clones of their own too.
+          if (m.userData.ownedMaps) (m.normalMap?.dispose(), m.roughnessMap?.dispose());
+          m.dispose();
+        },
       );
     }
     if (o.isLight) o.shadow?.dispose();
@@ -408,7 +427,7 @@ export class BoothScene {
     host.append(this.renderer.domElement);
     this.renderer.domElement.setAttribute(
       "aria-label",
-      "Interactive measured 3D booth",
+      "Interactive measured 3D home",
     );
     this.camera = new T.PerspectiveCamera(FOV, 1, 0.02, 100);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -1056,7 +1075,11 @@ export class BoothScene {
    */
   buildRoomWall(p, key, spec, g, width, height, rough) {
     const openings = wallOpenings(p, spec),
-      wallMat = rough(p.booth.color),
+      // Each face is finished from its own side: the owner's room in front,
+      // the neighbour (or the outside of the house) behind.
+      behind = wallBackRoom(p, spec),
+      front = wallFinish(findRoom(p, spec.room), spec.side, p.booth.color),
+      rear = behind ? wallFinish(behind.room, behind.side, p.booth.color) : { kind: "paint", color: p.booth.color },
       trim = rough("#f7f5f0"),
       t = WALL * IN,
       // The body stands behind the frame, a sliver short of both faces so
@@ -1064,7 +1087,12 @@ export class BoothScene {
       zc = -t / 2,
       depth = t - 2 * ROOM_WALL_SLIVER;
     for (const r of wallPieces(spec.width, spec.height, openings)) {
-      const mesh = this.box(r.w * IN, r.h * IN, depth, (r.x + r.w / 2) * IN, (r.y + r.h / 2) * IN, zc, wallMat, g);
+      // Box faces are +x, −x, +y, −y, +z (the front), −z (the back). The
+      // back face runs the other way along the wall, so its pattern is laid
+      // from the wall's far end to line up across the pieces.
+      const face = this.finishMaterial(front, r.w, r.h, r.x, r.y),
+        back = this.finishMaterial(rear, r.w, r.h, spec.width - r.x - r.w, r.y);
+      const mesh = this.box(r.w * IN, r.h * IN, depth, (r.x + r.w / 2) * IN, (r.y + r.h / 2) * IN, zc, [face, face, face, face, face, back], g);
       mesh.userData.wall = key;
       this.wallObjects.push(mesh);
     }
@@ -1137,9 +1165,8 @@ export class BoothScene {
    */
   buildRoomFloors(p) {
     this.roomFloorObjects = [];
-    const mat = new T.MeshStandardMaterial({ color: "#b48a5e", roughness: 0.7 });
     for (const r of p.booth.rooms || []) {
-      const floor = new T.Mesh(new T.BoxGeometry(r.width * IN, 0.004, r.depth * IN), mat);
+      const floor = new T.Mesh(new T.BoxGeometry(r.width * IN, 0.004, r.depth * IN), this.finishMaterial(floorFinish(r), r.width, r.depth));
       floor.position.set(r.x * IN, 0.002, r.z * IN);
       floor.receiveShadow = true;
       floor.name = "room-floor:" + r.id;
@@ -1150,10 +1177,22 @@ export class BoothScene {
     // The floor between two rooms a wall apart: under their wall, or through
     // the opening where one of them has taken that wall away.
     for (const s of wallGaps(p)) {
-      const strip = new T.Mesh(new T.BoxGeometry((s.x1 - s.x0) * IN, 0.004, (s.z1 - s.z0) * IN), mat);
+      const strip = new T.Mesh(new T.BoxGeometry((s.x1 - s.x0) * IN, 0.004, (s.z1 - s.z0) * IN), this.finishMaterial(floorFinish(findRoom(p, s.room)), s.x1 - s.x0, s.z1 - s.z0));
       strip.position.set(((s.x0 + s.x1) / 2) * IN, 0.002, ((s.z0 + s.z1) / 2) * IN);
       strip.receiveShadow = true;
       this.group.add(strip);
+    }
+    // Each room's ceiling, facing down: seen from inside a room — walking,
+    // or a camera below it — and culled from above, so the doll's-house view
+    // still looks in over the walls. It casts no shadow, so the rooms stay
+    // lit the way they are without one.
+    for (const r of p.booth.rooms || []) {
+      const ceiling = new T.Mesh(new T.PlaneGeometry(r.width * IN, r.depth * IN), this.finishMaterial(ceilingFinish(r), r.width, r.depth));
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set(r.x * IN, r.height * IN - 0.001, r.z * IN);
+      ceiling.name = "room-ceiling:" + r.id;
+      ceiling.castShadow = false;
+      this.group.add(ceiling);
     }
     // The posts that close the corners where two walls meet.
     const post = new T.MeshStandardMaterial({ color: p.booth.color, roughness: 0.92 });
@@ -1164,6 +1203,72 @@ export class BoothScene {
       mesh.name = "wall-corner";
       this.group.add(mesh);
     }
+  }
+  /**
+   * A finish (src/finishes.js) as a material for a rectangle `w` × `h`
+   * inches whose corner sits `x`, `y` inches into its surface. Paint is its
+   * colour alone; anything else carries its pattern, drawn procedurally until
+   * a photographed set for it is on disk (see `upgradeFinishes`).
+   */
+  finishMaterial(f, w, h, x = 0, y = 0) {
+    const kind = FINISH_KINDS[f.kind] || FINISH_KINDS.paint;
+    if (f.kind === "paint" || !FINISH_KINDS[f.kind]) return new T.MeshStandardMaterial({ color: f.color, roughness: kind.roughness });
+    const map = finishTexture(f.kind, f.color).clone();
+    const t = tiling(f.kind, w, h, x, y);
+    map.repeat.set(...t.repeat);
+    map.offset.set(...t.offset);
+    map.needsUpdate = true;
+    const material = new T.MeshStandardMaterial({ map, roughness: kind.roughness });
+    // The clone is this material's own, so a rebuild disposes it; the shared
+    // canvas underneath stays in finishTexture's cache.
+    material.userData.ownedMap = true;
+    (this.finishes ||= []).push({ material, finish: f, w, h, x, y });
+    return material;
+  }
+  /**
+   * Swap the procedural pattern for the owner's photographs wherever a set
+   * for a finish is on disk (public/assets/textures/finish-<kind>/). The
+   * chosen colour tints the photograph by how far it is from the kind's own
+   * colour, so a photographed oak can still be stained darker.
+   */
+  upgradeFinishes(rev) {
+    const entries = this.finishes || [];
+    this.finishes = [];
+    const kinds = new Set(entries.map((e) => e.finish.kind));
+    const keep = new Set();
+    for (const kind of kinds) {
+      const id = FINISH_KINDS[kind]?.set;
+      // A set found missing once stays missing until the page reloads: every
+      // edit rebuilds the scene, and asking again each time is five requests
+      // per finish for files the owner has not supplied.
+      this.finishMissing ||= new Set();
+      if (!id || this.finishMissing.has(id)) continue;
+      const consumer = "finish:" + kind;
+      keep.add(consumer);
+      this.surfaces.load(id, consumer).then((set) => {
+        if (!set) this.finishMissing.add(id);
+        if (this.revision !== rev || !set) return;
+        for (const e of entries.filter((x) => x.finish.kind === kind)) {
+          const m = e.material;
+          for (const slot of ["map", "normalMap", "roughnessMap"]) {
+            if (!set.maps[slot]) continue;
+            const tex = set.maps[slot].clone();
+            const tile = set.tileMetres / IN;
+            tex.repeat.set(e.w / tile, e.h / tile);
+            tex.offset.set(e.x / tile, e.y / tile);
+            tex.needsUpdate = true;
+            if (slot === "map") m.map?.dispose();
+            m[slot] = tex;
+          }
+          m.userData.ownedMaps = true;
+          m.color.copy(finishTint(e.finish));
+          m.needsUpdate = true;
+        }
+        this.renderer.shadowMap.needsUpdate = true;
+        this.invalidate();
+      }).catch(() => {});
+    }
+    this.surfaces.releaseMatching("finish:", keep);
   }
   box(w, h, d, x, y, z, mat, parent = this.group) {
     const o = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
@@ -1251,6 +1356,7 @@ export class BoothScene {
     if (this.scaleId !== selected) this.scaleId = null;
     this.revision = (this.revision || 0) + 1;
     const rev = this.revision;
+    this.finishes = [];
     this.disposeGroup();
     this.textureCache.retain([
       ...p.art.filter(a => a.asset).map(a => ({ id: a.asset, edits: a.edits, data: p.assets[a.asset]?.data })),
@@ -1584,6 +1690,7 @@ export class BoothScene {
       this.group.add(figure);
       this.personFrames[person.id] = figure;
     }
+    this.upgradeFinishes(rev);
     this.applyTags();
     this.applySelection();
     this.refreshGuides();

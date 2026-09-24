@@ -116,7 +116,7 @@ export function muxMp4({
       u16(width), u16(height),
       u32(0x00480000), u32(0x00480000), // 72 dpi horizontal and vertical
       u32(0), u16(1),                // reserved, frame count
-      compressorName("Artist OS Booth Studio"),
+      compressorName("Artist OS Home Layout"),
       u16(0x18), u16(0xffff),        // 24-bit colour, pre_defined = -1
       configuration,
       // Colour, stated rather than left to the player to guess. QuickTime

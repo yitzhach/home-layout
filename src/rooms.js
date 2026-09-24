@@ -27,6 +27,8 @@
 // door typed in the kitchen's west wall is the same hole as seen from the
 // dining room, whichever of the two rooms owns the wall.
 
+import { validFinishes } from "./finishes.js";
+
 export const SIDES = ["n", "e", "s", "w"];
 export const SIDE_NAMES = { n: "North", e: "East", s: "South", w: "West" };
 export const ROOM_PREFIX = "room:";
@@ -236,6 +238,24 @@ export function roomWalls(p) {
     });
   }
   return walls;
+}
+
+/**
+ * The room on a wall's far face, and the side of it the wall is: the
+ * neighbour whose facing edge overlaps it most. Null for an outside wall.
+ */
+export function wallBackRoom(p, wall) {
+  let best = null,
+    most = 1;
+  for (const r of homeRooms(p)) {
+    if (r.id === wall.room) continue;
+    const e = roomEdge(r, OPPOSITE[wall.side]);
+    if (!sameLine(wall, e)) continue;
+    const a = wall.axis === "x" ? Math.min(wall.origin.x, wall.origin.x + wall.dir.x * wall.width) : Math.min(wall.origin.z, wall.origin.z + wall.dir.z * wall.width);
+    const overlap = Math.min(a + wall.width, e.hi) - Math.max(a, e.lo);
+    if (overlap > most) (best = { room: r, side: e.side }), (most = overlap);
+  }
+  return best;
 }
 
 export const isRoomKey = (key) => typeof key === "string" && key.startsWith(ROOM_PREFIX);
@@ -477,6 +497,7 @@ export function validRooms(rooms) {
     if (r.type !== undefined && !(r.type in ROOM_TYPES)) return false;
     for (const k of ["width", "depth", "height", "x", "z"]) if (!fin(r[k], ROOM_LIMITS[k])) return false;
     if (r.open !== undefined && (!Array.isArray(r.open) || r.open.some((s) => !SIDES.includes(s)))) return false;
+    if (!validFinishes(r.finishes)) return false;
     if (r.openings !== undefined) {
       if (!Array.isArray(r.openings) || r.openings.length > MAX_OPENINGS) return false;
       const oids = new Set();

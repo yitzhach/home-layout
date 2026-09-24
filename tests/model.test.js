@@ -249,7 +249,7 @@ test("an invalid panel, or art naming a panel that is absent, is rejected", () =
   const bad = (mutate) => {
     const p = demoProject();
     mutate(p);
-    assert.throws(() => validateProject(p), /not a valid Booth Studio v1 backup/);
+    assert.throws(() => validateProject(p), /not a valid Home Layout backup/);
   };
   bad((p) => (p.booth.panels = [{ id: "a", width: 4, height: 60, x: 0, z: 0, rotation: 0 }]));
   bad((p) => (p.booth.panels = [{ id: "a", width: 36, height: 60, x: 0, z: 0, rotation: 400 }]));

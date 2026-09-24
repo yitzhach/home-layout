@@ -18,7 +18,8 @@
 //   wall is not a walkway — and are not reported.
 // - **art-overlap**: two works hung over each other on the same face of the
 //   same wall.
-import { boothPanels, boothPedestals, isShown, wallSpec } from "./model.js";
+import { FURNITURE, boothPanels, boothPedestals, furnitureKind, isShown, wallSpec } from "./model.js";
+import { homeRooms, roomBox, roomWalls, roomWallLabel, wallBackRoom, wallFootprint } from "./rooms.js";
 import { sameWall } from "./arrange.js";
 
 /** The accessible route width, in inches (ADA 403.5.1). */
@@ -84,6 +85,15 @@ export function gapBetween(a, b) {
   return best;
 }
 
+/** The room a point on the plan is in, or null. */
+function roomAt(p, x, z) {
+  const r = homeRooms(p).find((room) => {
+    const b = roomBox(room);
+    return x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1;
+  });
+  return r ? r.id : null;
+}
+
 /** Everything that stands on the floor, as named polygons. */
 export function floorPieces(p) {
   const b = p.booth;
@@ -95,6 +105,9 @@ export function floorPieces(p) {
         id: "pedestal:" + ped.id,
         name: ped.name || "Pedestal " + (i + 1),
         kind: "piece",
+        // A rug under the furniture, cabinets hung over the counter.
+        layer: FURNITURE[furnitureKind(ped)]?.layer,
+        room: roomAt(p, ped.x, ped.z),
         poly: corners(ped.x, ped.z, ped.width, ped.depth, ped.rotation || 0),
       }),
     );
@@ -122,6 +135,15 @@ export function floorPieces(p) {
   if (back?.enabled) pieces.push({ id: "wall:back", name: "Back wall", kind: "wall", poly: corners(-W / 2 + back.width / 2, -D / 2 - WALL / 2, back.width, WALL) });
   if (left?.enabled) pieces.push({ id: "wall:left", name: "Left wall", kind: "wall", poly: corners(-W / 2 - WALL / 2, D / 2 - left.width / 2, WALL, left.width) });
   if (right?.enabled) pieces.push({ id: "wall:right", name: "Right wall", kind: "wall", poly: corners(W / 2 + WALL / 2, -D / 2 + right.width / 2, WALL, right.width) });
+  // A home's walls, each as the footprint it stands on behind its room's
+  // edge, so a piece pushed flush against one is touching it.
+  for (const w of roomWalls(p)) {
+    const f = wallFootprint(w);
+    // The rooms it faces: a piece in any other room is on the far side of
+    // some other wall from it, however near it is on the plan.
+    const rooms = [w.room, wallBackRoom(p, w)?.room.id].filter(Boolean);
+    pieces.push({ id: "wall:" + w.key, name: roomWallLabel(p, w.key), kind: "wall", rooms, poly: [[f.x0, f.z0], [f.x1, f.z0], [f.x1, f.z1], [f.x0, f.z1]] });
+  }
   return pieces;
 }
 
@@ -142,7 +164,7 @@ export function checkClearance(p, { accessible = ACCESSIBLE } = {}) {
         level: "problem",
         ids: [piece.id],
         inches: round(past),
-        text: `${piece.name} stands ${round(past)}″ outside the booth's footprint.`,
+        text: `${piece.name} stands ${round(past)}″ outside the floor.`,
       });
   }
   for (let i = 0; i < pieces.length; i++)
@@ -150,6 +172,10 @@ export function checkClearance(p, { accessible = ACCESSIBLE } = {}) {
       const a = pieces[i],
         b = pieces[j];
       if (a.kind === "wall" && b.kind === "wall") continue;
+      if (a.layer || b.layer) continue;
+      const wall = a.rooms ? a : b.rooms ? b : null,
+        other = wall === a ? b : a;
+      if (wall && other.room && !wall.rooms.includes(other.room)) continue;
       if (overlaps(a.poly, b.poly)) {
         out.push({ kind: "overlap", level: "problem", ids: [a.id, b.id], inches: 0, text: `${a.name} and ${b.name} stand in each other.` });
         continue;

@@ -10,7 +10,7 @@
     "test": "node --test tests/*.test.js",
     "deploy": "npm run build && wrangler deploy",
     "test:browser": "node tests/e2e.mjs",
-    "test:view": "node tests/view-city.mjs && node tests/view-lighting.mjs && node tests/view-hdri.mjs && node tests/view-textures.mjs && node tests/view-ground-library.mjs && node tests/view-video.mjs && node tests/view-timeline.mjs && node tests/view-people.mjs && node tests/view-panels.mjs && node tests/view-responsive.mjs && node tests/view-finish.mjs && node tests/view-measure.mjs && node tests/view-furniture.mjs && node tests/view-arrange.mjs && node tests/view-toolsearch.mjs && node tests/view-tier.mjs && node tests/view-guides.mjs && node tests/view-views.mjs && node tests/view-plan.mjs && node tests/view-box.mjs && node tests/view-rooms.mjs"
+    "test:view": "node tests/view-city.mjs && node tests/view-lighting.mjs && node tests/view-hdri.mjs && node tests/view-textures.mjs && node tests/view-ground-library.mjs && node tests/view-video.mjs && node tests/view-timeline.mjs && node tests/view-people.mjs && node tests/view-panels.mjs && node tests/view-responsive.mjs && node tests/view-finish.mjs && node tests/view-measure.mjs && node tests/view-furniture.mjs && node tests/view-arrange.mjs && node tests/view-toolsearch.mjs && node tests/view-tier.mjs && node tests/view-guides.mjs && node tests/view-views.mjs && node tests/view-plan.mjs && node tests/view-box.mjs && node tests/view-rooms.mjs && node tests/view-home.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

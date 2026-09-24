@@ -40,5 +40,5 @@ test("the setting is stored, bounded, and optional", () => {
     assert.doesNotThrow(() => validateProject(p));
   }
   p.booth.fixtures = "sometimes";
-  assert.throws(() => validateProject(p), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(p), /not a valid Home Layout/);
 });

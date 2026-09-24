@@ -38,7 +38,7 @@ try {
     assert.equal(ped.kind ?? 'pedestal', kind, `${kind} is stored as its kind`);
     assert.ok(Math.abs(ped.x) <= booth.width / 2 && Math.abs(ped.z) <= booth.depth / 2, `${kind} lands inside the booth`);
   }
-  assert.equal(list[0].kind, undefined, 'a plain pedestal is stored exactly as before, with no kind');
+  assert.equal(list[kinds.indexOf('pedestal')].kind, undefined, 'a plain pedestal is stored exactly as before, with no kind');
 
   // Drawn at the size typed: the group's bounds match width, depth and height.
   const bounds = await page.evaluate(() => {

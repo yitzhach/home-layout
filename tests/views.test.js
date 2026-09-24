@@ -28,7 +28,7 @@ test("views are optional in schema 1 and checked when present", () => {
   ]) {
     const q = blankProject();
     q.views = bad;
-    assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(q), /not a valid Home Layout/);
   }
   assert.equal(validViews(undefined), true);
 });
