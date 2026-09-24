@@ -2007,3 +2007,11 @@ dialog li {
 .hall-map-wrap [data-hall-booth]:focus rect {stroke:#2f7de1;}
 .hall-totals {font-size:12px;color:var(--muted);margin:8px 0 0;}
 .hall-booth {border:1px solid #2f5f9e;border-radius:10px;padding:10px 12px;background:#17202b;}
+
+/* The wall photo corner editor (phase 3): the photo with its handles beside
+   the straightened result, side by side where there is room. */
+.wall-photo-editor { max-width: min(1100px, 92vw); }
+.wall-photo-panes { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin: 12px 0; }
+.wall-photo-source { max-width: min(720px, 100%); height: auto; touch-action: none; cursor: crosshair; border-radius: 6px; }
+.wall-photo-preview { max-width: min(360px, 100%); height: auto; border-radius: 6px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.wall-photo-warning { color: #c0392b; }

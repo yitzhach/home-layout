@@ -34,6 +34,7 @@ import { buildFurniture } from "./furniture.js";
 import { FLOOR_FINISHES, ceilingColor, floorColor, floorFinish, roomFinish, wallFaces } from "./finishes.js";
 import { floorPhoto, floorTexture } from "./finish-textures.js";
 import { findRoomWall, isRoomKey, wallOpenings, wallPieces } from "./rooms.js";
+import { allWallPhotos, photoPieces, sideWall, straightSize, straighten } from "./wallphoto.js";
 import { LIGHT_KINDS, candela, daylightSpec, lightSpot, roomLights, sunDirection, sunLook } from "./fixtures.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
@@ -1185,6 +1186,89 @@ export class BoothScene {
       this.group.add(ceiling);
     }
     this.buildRoomLights(p);
+    this.buildWallPhotos(p);
+  }
+  /**
+   * Each room's wall photos: the photo straightened from its four corners
+   * (once per photo and set of corners, then cached), laid on the face of
+   * the side that looks into the room, a hair in front of the wall and
+   * behind any art, and cut round the side's doors and windows so each
+   * solid piece shows its own part of the picture.
+   */
+  buildWallPhotos(p) {
+    const rev = this.revision;
+    for (const { room, side, photo } of allWallPhotos(p)) {
+      const asset = p.assets[photo.asset];
+      if (!asset) continue;
+      const wall = sideWall(room, side),
+        g = new T.Group();
+      placePanelFrame(g, {
+        x: wall.origin.x + (wall.dir.x * wall.width) / 2,
+        z: wall.origin.z + (wall.dir.z * wall.width) / 2,
+        width: wall.width,
+        rotation: wall.rotation,
+      });
+      g.name = `wall-photo:${room.id}:${side}`;
+      g.userData.room = room.id;
+      g.userData.side = side;
+      const mat = new T.MeshStandardMaterial({ color: "#ffffff", roughness: 0.9 });
+      for (const q of photoPieces(p, room, side, photo)) {
+        const geo = new T.PlaneGeometry(q.w * IN, q.h * IN);
+        // PlaneGeometry's corners run top-left, top-right, bottom-left,
+        // bottom-right; v is 0 at the bottom, as the flipped texture has it.
+        geo.setAttribute("uv", new T.Float32BufferAttribute([q.u0, q.v1, q.u1, q.v1, q.u0, q.v0, q.u1, q.v0], 2));
+        const m = new T.Mesh(geo, mat);
+        m.position.set((q.x + q.w / 2) * IN, (q.y + q.h / 2) * IN, -0.002);
+        m.receiveShadow = true;
+        g.add(m);
+      }
+      this.group.add(g);
+      this.straightPhoto(photo, asset)
+        .then((t) => {
+          if (this.revision !== rev || !g.parent) return;
+          mat.map = t;
+          mat.needsUpdate = true;
+          this.invalidate?.();
+        })
+        .catch(() => {});
+    }
+  }
+  /** A wall photo straightened into a texture, cached by photo and corners. */
+  straightPhoto(photo, asset) {
+    this.straightCache ??= new Map();
+    const key = [photo.asset, JSON.stringify(photo.corners), photo.width, photo.height].join("|");
+    if (!this.straightCache.has(key)) {
+      if (this.straightCache.size > 24) this.straightCache.clear();
+      this.straightCache.set(
+        key,
+        (async () => {
+          const img = new Image();
+          img.src = asset.data;
+          await img.decode();
+          // The source is read at no more than 2048px: enough for a
+          // 1024px result, and a phone photo's 48 megapixels is not.
+          const s = Math.min(1, 2048 / Math.max(img.width, img.height)),
+            sw = Math.max(2, Math.round(img.width * s)),
+            sh = Math.max(2, Math.round(img.height * s));
+          const src = document.createElement("canvas");
+          src.width = sw;
+          src.height = sh;
+          const sc = src.getContext("2d", { willReadFrequently: true });
+          sc.drawImage(img, 0, 0, sw, sh);
+          const { width, height } = straightSize(photo, sw, sh);
+          const out = straighten(sc.getImageData(0, 0, sw, sh).data, sw, sh, photo.corners, width, height);
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext("2d").putImageData(new ImageData(out, width, height), 0, 0);
+          const t = new T.CanvasTexture(canvas);
+          t.colorSpace = T.SRGBColorSpace;
+          t.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+          return t;
+        })(),
+      );
+    }
+    return this.straightCache.get(key);
   }
   /**
    * Each room's fixtures: a point light where the bulb is and the fixture

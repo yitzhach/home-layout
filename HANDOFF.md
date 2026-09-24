@@ -12,12 +12,11 @@ app learned — its rules, its tests, its hard-won bugs — is in
 
 - Repo: https://github.com/yitzhach/home-layout. `main` is production through
   Cloudflare's Git integration (Worker `home-layout`); merging is deploying.
-- **State: phases 1, 2, 4 and 5 are built — the house, its furniture and
-  finishes, its lights and daylight, and the AI Worker.** Phase 3 (the wall
-  photo) is not; the owner chose to do 4 and 5 first. A first visit opens a
-  starter floor (living room, kitchen, bedroom, bathroom) seen from above like
-  a doll's house, each room floored as its kind usually is. The details are
-  the sections below.
+- **State: all five phases are built — the house, its furniture and
+  finishes, wall photos, lights and daylight, and the AI Worker.** A first
+  visit opens a starter floor (living room, kitchen, bedroom, bathroom) seen
+  from above like a doll's house, each room floored as its kind usually is.
+  The details are the sections below.
 - **The AI is off on the live site until the owner sets the key**:
   `npx wrangler secret put ANTHROPIC_API_KEY` (or the Worker's Settings →
   Variables and Secrets in the Cloudflare dashboard). Until then every AI
@@ -140,6 +139,60 @@ app learned — its rules, its tests, its hard-won bugs — is in
   furniture does not know which room it is in; patterns are unjudged by eye —
   no session can look at a render.
 
+## Phase 3 — wall photos
+
+- **A wall photo is `room.wallPhotos[side]`**, optional: `{ asset, corners,
+  x, y, width, height }`. `src/wallphoto.js` is all of it and is pure;
+  `validWallPhotos` is called from `validateProject` with the project's
+  assets, so a record whose image is missing is refused. `asset` is an
+  ordinary image asset with the new role `"wall"` (so the Artwork library
+  leaves it out), holding the photo **as taken**; `corners` are fractions of
+  it (top-left, top-right, bottom-right, bottom-left, either winding, convex —
+  `goodCorners`); `x`/`y`/`width`/`height` are the real inches of the
+  stretch of wall the corners mark, from the side's left end (seen from
+  inside) and the floor. A new photo covers the whole side, floor to ceiling.
+- **Keyed by side, not wall piece.** The side is what someone photographs,
+  whichever room owns the slab on that line. `photoPieces` builds the side as
+  a virtual wall (`sideWall`), takes its openings from `wallOpenings` —
+  typed in either room — and returns the photo's rectangle cut into the solid
+  pieces left, each with its part of the photo as u/v ranges. A side that is
+  opened up draws no photo but keeps the record (`allWallPhotos` filters).
+- **Straightening happens when the wall is drawn**, not when it is stored, so
+  the corners can be moved again with nothing lost: `straighten` maps every
+  output pixel back through `homography` (model.js, the booth Photo mode's)
+  and samples bilinearly, on a plain RGBA array; `straightSize` makes it the
+  typed shape, 1024px on the long side at most and never more pixels than the
+  photo had across the wall. The scene (`buildWallPhotos`, from
+  `buildRoomFloors`) reads the source at ≤2048px, caches the texture by photo
+  and corners (`straightCache`), and lays each piece 2 mm in front of the
+  wall face in the side's own frame (`placePanelFrame`) — behind any art,
+  which hangs in front of the frame at its own depth.
+- **UI:** Rooms tab → a room → Wall photos: "Photograph the north wall" (per
+  side) chooses a JPG/PNG and opens the corner editor
+  (`src/wallphoto-editor.js`, in `#dialog`): the photo with four draggable
+  handles (mouse or touch), the straightened preview beside it redrawn as
+  they move, a warning and a disabled "Use this photo" while the corners
+  cross, Reset, and — when AI is allowed — "Find the corners · AI", which
+  calls the phase 5 `/api/ai/corners` route and moves the handles for the
+  user to check. **Nothing is stored until "Use this photo".** Each photo
+  then has its real width, height and position fields, Corners to edit
+  again, and Remove, which drops its image unless another photo uses it
+  (deleting the room does the same); undo restores both.
+- **Tier:** nothing is gated. The proposed split gives Lite one wall photo;
+  counting them is not built. The AI corner button follows the `ai` feature.
+- **Tests:** `tests/wallphoto.test.js` (a known quadrilateral straightened
+  back to a full rectangle; sizes; corner checks; cutting round a window with
+  per-piece u/v; validation) and `tests/view-wallphoto.mjs` (choose, drag a
+  handle, nothing stored before use, drawn less its openings — including the
+  bedroom's door on the shared wall — typed size, reload, AI corners from a
+  stand-in, remove and undo, hidden while the wall is open).
+- **Rough edges:** the photo is straightened only for perspective — lens
+  barrel distortion from a wide phone lens is not corrected, so long straight
+  edges may bow a little; the photo is not relit (it carries the light it was
+  taken in, and the scene's light falls on it again); a side longer than one
+  photo needs one photo stretched across it — no stitching; judged by no one's
+  eye yet.
+
 ## Phase 4 — light fixtures and daylight
 
 - **Fixtures are `room.lights`**, optional: `[{ id, kind, x, z, lumens,
@@ -193,8 +246,8 @@ app learned — its rules, its tests, its hard-won bugs — is in
   `POST /api/ai/material` `{ image, mediaType, kind: floor|wall }` →
   `{ label, finish, color, roughness }`, `finish` one of `FLOOR_FINISHES` or
   null; `POST /api/ai/corners` `{ image, mediaType }` → `{ found, corners }`,
-  four `[x, y]` fractions TL, TR, BR, BL. **Nothing calls `corners` yet**: it
-  is there for phase 3's wall photo to call as its "find the corners" button.
+  four `[x, y]` fractions TL, TR, BR, BL, called by the wall photo corner
+  editor's "Find the corners · AI" button.
 - **The call:** the official `@anthropic-ai/sdk` (a dependency; wrangler
   bundles it), model `claude-opus-5`, structured output
   (`output_config.format` JSON schema), effort low, and server-side refusal
@@ -266,12 +319,17 @@ app learned — its rules, its tests, its hard-won bugs — is in
 2. ~~Furniture set and materials per wall, floor and ceiling.~~ Done; the
    owner should look at the floor patterns and furniture on the live site,
    and supply photographs under `public/assets/materials/<id>/color.jpg`.
-3. **Next:** wall photo, manual four-corner straightening. When it is built,
-   add its "Find the corners · AI" button on `askAI("corners", …)` — the
-   Worker route is already there and tested.
+3. ~~Wall photo, manual four-corner straightening.~~ Done, with the AI
+   corner finder wired in; the owner should try it on the live site with a
+   real phone photo of a real wall.
 4. ~~Fixtures and daylight.~~ Done; the owner should judge on the live site
    how bright fixtures and the sun look, and whether rooms are too dark from
    the doll's-house view with daylight on.
 5. ~~The AI Worker: wall mapping and material help.~~ Done except the key:
    the owner runs `npx wrangler secret put ANTHROPIC_API_KEY`, then tries
-   "Match floor to a photo" on the live site. Wall mapping waits on phase 3.
+   "Match floor to a photo" and a wall photo's "Find the corners" on the
+   live site.
+
+After the five phases, what is open is the owner's to choose: payment for
+Pro and the final Lite/Pro split (then counting wall photos for Lite), more
+storeys, and the rough edges listed under each phase above.

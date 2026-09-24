@@ -163,6 +163,8 @@ import { hangingGuide } from "./guide.js";
 import { dedupe, fold, rankTools } from "./toolsearch.js";
 import { MAX_OPENINGS, MAX_ROOMS, OPENING_KINDS, OPENING_LIMITS, ROOM_LIMITS, ROOM_TYPES, SIDES, SIDE_NAMES, constrainRoom, findRoom, homeRooms, houseExtent, newOpening, newRoom, resizeRoom, roomBeside, roomEdge, roomWalls } from "./rooms.js";
 import { askAI, photoPayload } from "./ai.js";
+import { newWallPhoto, wallPhotos } from "./wallphoto.js";
+import { editCorners } from "./wallphoto-editor.js";
 import { DAYLIGHT_LIMITS, LIGHT_KINDS, LIGHT_LIMITS, MAX_LIGHTS, MONTHS, daylightSpec, hourLabel, newLight, roomLights } from "./fixtures.js";
 import { DEFAULT_CEILING, FLOOR_FINISHES, PAINTS, ceilingColor, floorColor, floorFinish, roomFinish, setFinish, sideColor, starterFinish } from "./finishes.js";
 import { PRO_FEATURES, TIERS, actionFeature, can, readTier, resolveTier, writeTier } from "./tier.js";
@@ -2061,7 +2063,7 @@ async function boot() {
     const add = rooms.length < MAX_ROOMS
       ? `<label class="setting-label">New room<select id="new-room-type" aria-label="New room type">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${newRoomType === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="button-row">${SIDES.map((side) => `<button data-action="room-add" data-side="${side}" title="Add a room ${SIDE_NAMES[side].toLowerCase()} of ${e(r.name)}">${icon("plus")}<span>${SIDE_NAMES[side]}</span></button>`).join("")}</div><p class="muted">Adds the new room against that side of ${e(r.name)}, sharing its wall. Size and place it afterwards.</p>`
       : `<p class="muted">${MAX_ROOMS} rooms is the most one floor holds.</p>`;
-    return `${heading}${list}<section><h3>${e(r.name)}</h3><label class="setting-label">Name<input type="text" data-field="name" data-scope="${scope}" maxlength="120" aria-label="Room name" value="${e(r.name)}"/></label><label class="setting-label">Kind of room<select data-field="type" data-scope="${scope}" aria-label="Kind of room">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${(r.type || "other") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="field-pair">${f("Width", "width")}${f("Depth", "depth")}</div>${f("Ceiling height", "height")}<div class="field-pair">${f("Centre X", "x")}${f("Centre Z", "z")}</div><p class="muted">Width runs east–west, depth north–south. X and Z are the room's centre from the middle of the floor; +Z is south.</p></section>${finishesSection(r, scope)}${lightsSection(r)}<section><h3>Walls</h3>${walls}<p class="muted">Untick a wall to open the room up — open plan to the next room. A wall two rooms share is open if either room opens it.</p></section><section><h3>Doors, windows and archways <span>${(r.openings || []).length}</span></h3>${openings}${addOpening}</section><section><h3>Add a room beside it</h3>${add}</section><section><h3>Remove</h3><button data-action="room-delete" data-room="${r.id}" class="danger wide">${icon("trash-2")}<span>Delete ${e(r.name)}</span></button></section>${daylightSection()}`;
+    return `${heading}${list}<section><h3>${e(r.name)}</h3><label class="setting-label">Name<input type="text" data-field="name" data-scope="${scope}" maxlength="120" aria-label="Room name" value="${e(r.name)}"/></label><label class="setting-label">Kind of room<select data-field="type" data-scope="${scope}" aria-label="Kind of room">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${(r.type || "other") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="field-pair">${f("Width", "width")}${f("Depth", "depth")}</div>${f("Ceiling height", "height")}<div class="field-pair">${f("Centre X", "x")}${f("Centre Z", "z")}</div><p class="muted">Width runs east–west, depth north–south. X and Z are the room's centre from the middle of the floor; +Z is south.</p></section>${finishesSection(r, scope)}${wallPhotosSection(r)}${lightsSection(r)}<section><h3>Walls</h3>${walls}<p class="muted">Untick a wall to open the room up — open plan to the next room. A wall two rooms share is open if either room opens it.</p></section><section><h3>Doors, windows and archways <span>${(r.openings || []).length}</span></h3>${openings}${addOpening}</section><section><h3>Add a room beside it</h3>${add}</section><section><h3>Remove</h3><button data-action="room-delete" data-room="${r.id}" class="danger wide">${icon("trash-2")}<span>Delete ${e(r.name)}</span></button></section>${daylightSection()}`;
   }
   /** 150 → 12′ 6″. The room list reads in feet, as a house is talked about. */
   function fmtFeet(inches) {
@@ -2094,6 +2096,74 @@ async function boot() {
     }).join("");
     const floorId = floorFinish(r);
     return `<section><h3>Finishes</h3><h4>Walls</h4>${color("Paint", "walls", walls, `${r.name} wall paint`)}${chips("walls", walls)}<p class="muted">${fin.walls ? "This room's own paint." : "The house's wall colour, until you choose one here."} A wall between two rooms is painted on each face by the room it looks into.</p><button class="text-button" data-action="ai-match" data-room="${r.id}" data-kind="wall">${icon("camera")}<span>Match paint to a photo · AI</span></button>${sides}<h4>Floor</h4><label class="setting-label">Material<select data-field="finish-floor" data-scope="${scope}" aria-label="${e(r.name)} floor">${Object.entries(FLOOR_FINISHES).map(([k, v]) => `<option value="${k}" ${k === floorId ? "selected" : ""}>${e(v.label)}</option>`).join("")}</select></label>${color("Colour", "floorColor", floorColor(r), `${r.name} floor colour`)}${fin.floorColor ? `<button class="text-button" data-finish="floorColor" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to ${e(FLOOR_FINISHES[floorId].label.toLowerCase())}'s own colour</span></button>` : ""}<button class="text-button" data-action="ai-match" data-room="${r.id}" data-kind="floor">${icon("camera")}<span>Match floor to a photo · AI</span></button><h4>Ceiling</h4>${color("Ceiling", "ceiling", ceilingColor(r), `${r.name} ceiling colour`)}${fin.ceiling && fin.ceiling !== DEFAULT_CEILING ? `<button class="text-button" data-finish="ceiling" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to white</span></button>` : ""}<p class="muted">The ceiling shows from inside a room — walk in, or look up from eye height — and stays out of the way from above.</p></section>`;
+  }
+  /**
+   * A room's wall photos: one per side, the real wall photographed, its four
+   * corners tapped and its size typed, so the 3D wall shows the real one and
+   * art hung on it is seen to scale against it.
+   */
+  function wallPhotosSection(r) {
+    const photos = wallPhotos(r);
+    const rows = SIDES.map((side) => {
+      const ph = photos[side],
+        open = (r.open || []).includes(side),
+        name = `${r.name} ${SIDE_NAMES[side].toLowerCase()} wall photo`;
+      if (!ph)
+        return open ? "" : `<button class="wide" data-action="wallphoto-add" data-room="${r.id}" data-side="${side}">${icon("camera")}<span>Photograph the ${SIDE_NAMES[side].toLowerCase()} wall</span></button>`;
+      const ws = `wallphoto|${r.id}|${side}`,
+        len = roomEdge(r, side).length;
+      return `<div class="opening-row"><h4>${SIDE_NAMES[side]} wall photo${open ? " · wall opened, not shown" : ""}</h4><div class="field-pair">${field("Real width", "width", ph.width, 6, Math.max(6, len), 0.5, "in", ws, `${name} width`)}${field("Real height", "height", ph.height, 6, Math.max(6, r.height), 0.5, "in", ws, `${name} height`)}</div><div class="field-pair">${field("From left end", "x", ph.x, 0, Math.max(0, len - 6), 0.5, "in", ws, `${name} from left`)}${field("From floor", "y", ph.y, 0, Math.max(0, r.height - 6), 0.5, "in", ws, `${name} from floor`)}</div><div class="button-row"><button data-action="wallphoto-corners" data-room="${r.id}" data-side="${side}">${icon("move")}<span>Corners</span></button><button data-action="wallphoto-delete" data-room="${r.id}" data-side="${side}">${icon("trash-2")}<span>Remove</span></button></div></div>`;
+    }).join("");
+    return `<section><h3>Wall photos <span>${Object.keys(photos).length}</span></h3>${rows}<p class="muted">Photograph a real wall, drag the four handles onto its corners and type how wide and tall that stretch of wall really is — the whole wall is ${fmtFeet(roomEdge(r, "n").length)} or ${fmtFeet(roomEdge(r, "e").length)} across and ${fmtFeet(r.height)} high. The photo is straightened onto the wall; doors and windows still cut through it.</p></section>`;
+  }
+  /**
+   * The corner editor for a room side's photo: an existing one, or `fresh`
+   * — a photo just chosen, stored only when the user says to use it.
+   */
+  function openWallPhoto(roomId, side, fresh = null) {
+    const r = findRoom(p, roomId);
+    if (!r) return;
+    const current = wallPhotos(r)[side],
+      asset = fresh || p.assets[current?.asset];
+    if (!asset) return;
+    const draft = current || newWallPhoto(r, side, null);
+    editCorners({
+      dialog: document.querySelector("#dialog"),
+      host: document.querySelector("#dialog-content"),
+      dataUrl: asset.data,
+      corners: draft.corners,
+      width: Math.round(draft.width),
+      height: Math.round(draft.height),
+      title: e(`${r.name} · ${SIDE_NAMES[side]} wall`),
+      toast,
+      findCorners: allowed("ai")
+        ? async () => {
+            const blob = await (await fetch(asset.data)).blob();
+            const res = await askAI("corners", await photoPayload(blob));
+            if (res.error) return res;
+            return res.value.found ? res.value.corners : null;
+          }
+        : null,
+      done: (corners) =>
+        mutate(() => {
+          const room = findRoom(p, roomId);
+          if (!room) return;
+          let assetId = current?.asset;
+          if (fresh) {
+            assetId = uid();
+            p.assets[assetId] = { ...fresh, role: "wall" };
+            // A photo replaced leaves with its record, unless something else
+            // still shows it.
+            if (current?.asset) dropWallAsset(current.asset, room, side);
+          }
+          room.wallPhotos = { ...wallPhotos(room), [side]: { ...draft, asset: assetId, corners } };
+        }),
+    });
+  }
+  /** Forget a wall photo's image when no other wall photo uses it. */
+  function dropWallAsset(assetId, room, side) {
+    const used = homeRooms(p).some((x) => Object.entries(wallPhotos(x)).some(([sd, ph]) => ph.asset === assetId && !(x === room && sd === side)));
+    if (!used && p.assets[assetId]?.role === "wall") delete p.assets[assetId];
   }
   /**
    * A room's light fixtures: add one of each kind, then place it by its
@@ -3102,6 +3172,7 @@ async function boot() {
       confirmAction(`Delete ${r.name}?`, "Its walls come down and any art hung on them is taken down with them. Undo brings it back.", () => {
         mutate(() => {
           p.booth.rooms = homeRooms(p).filter((x) => x.id !== r.id);
+          for (const [side, ph] of Object.entries(wallPhotos(r))) dropWallAsset(ph.asset, r, side);
           const keys = new Set(roomWalls(p).map((w) => w.key));
           p.art = p.art.filter((a) => !String(a.wall).startsWith("room:") || keys.has(a.wall));
           selectedRoom = null;
@@ -3156,6 +3227,37 @@ async function boot() {
         toast(kind === "wall" ? `Painted ${m.color} — ${m.label}.` : `${m.finish ? FLOOR_FINISHES[m.finish].label : "Colour only"}${m.color ? " in " + m.color : ""} — ${m.label}.`);
       });
       input.click();
+    },
+    "wallphoto-add": (b) => {
+      const { room, side } = b.dataset;
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/jpeg,image/png";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          if (Object.keys(p.assets).length >= 250) throw new Error("This prototype supports up to 250 images.");
+          openWallPhoto(room, side, await readImage(file));
+        } catch (err) {
+          toast(err.message || "That photo could not be read.", true);
+        }
+      });
+      input.click();
+    },
+    "wallphoto-corners": (b) => openWallPhoto(b.dataset.room, b.dataset.side),
+    "wallphoto-delete": (b) => {
+      const r = findRoom(p, b.dataset.room),
+        side = b.dataset.side,
+        ph = wallPhotos(r)[side];
+      if (!ph) return;
+      mutate(() => {
+        const rest = { ...wallPhotos(r) };
+        delete rest[side];
+        if (Object.keys(rest).length) r.wallPhotos = rest;
+        else delete r.wallPhotos;
+        dropWallAsset(ph.asset, r, side);
+      });
     },
     "light-add": (b) => {
       const r = findRoom(p, b.dataset.room);
@@ -3972,6 +4074,16 @@ async function boot() {
         const before = p.art.length;
         p.art = p.art.filter((a) => !String(a.wall).startsWith("room:") || keys.has(a.wall));
         if (p.art.length < before) toast(`${before - p.art.length} work${before - p.art.length > 1 ? "s" : ""} taken down with the wall.`);
+        return;
+      }
+      if (String(scope).startsWith("wallphoto|")) {
+        const [, roomId, side] = String(scope).split("|");
+        const r = findRoom(p, roomId),
+          ph = wallPhotos(r)[side];
+        if (!ph) return;
+        const len = roomEdge(r, side).length,
+          lim = { width: [6, Math.max(6, len)], height: [6, Math.max(6, Math.min(240, r.height))], x: [0, Math.max(0, len - 6)], y: [0, Math.max(0, r.height - 6)] }[key];
+        if (lim) ph[key] = Math.max(lim[0], Math.min(lim[1], Number(value)));
         return;
       }
       if (String(scope).startsWith("light|")) {

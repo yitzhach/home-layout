@@ -1,6 +1,7 @@
 import { validViews } from "./views.js";
 import { starterFinish, validFinish } from "./finishes.js";
 import { validDaylight, validLights } from "./fixtures.js";
+import { validWallPhotos } from "./wallphoto.js";
 import { findRoomWall, homeRooms, wallOpenings, houseExtent, isRoomKey, roomWallLabel, roomWalls, starterRooms, validRooms } from "./rooms.js";
 import { editedAspect, validImageEdits } from "./image-edit.js";
 import { SHADOW_FIELD, SHADOW_MAX, shadowSpec } from "./dropshadow.js";
@@ -922,6 +923,7 @@ export function validateProject(p) {
   if (!homeRooms(p).every((r) => validFinish(r.finish))) fail();
   if (!homeRooms(p).every((r) => validLights(r.lights))) fail();
   if (!validDaylight(p.booth.daylight)) fail();
+  if (!homeRooms(p).every((r) => validWallPhotos(r.wallPhotos, p.assets))) fail();
   const roomIds = new Set(homeRooms(p).map((r) => r.id));
   const ids = new Set();
   for (const a of p.art) {
@@ -963,7 +965,7 @@ export function validateProject(p) {
       !asset ||
       !finite(asset.width, 1, 30000) ||
       !finite(asset.height, 1, 30000) ||
-      (asset.role !== undefined && !["artwork", "photo", "surround", "ground", "underlay", "model"].includes(asset.role)) ||
+      (asset.role !== undefined && !["artwork", "photo", "surround", "ground", "underlay", "model", "wall"].includes(asset.role)) ||
       typeof asset.data !== "string" ||
       // An image, or — for a 3D model someone brought in — a binary glTF.
       !(asset.role === "model"
