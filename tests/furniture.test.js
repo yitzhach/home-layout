@@ -19,7 +19,7 @@ test("every kind of furniture validates at its own size", () => {
 
 test("an unknown kind is refused, and a kind-less pedestal is a pedestal", () => {
   const p = blankProject();
-  p.booth.pedestals = [piece("table6", { kind: "sofa" })];
+  p.booth.pedestals = [piece("table6", { kind: "hammock" })];
   assert.throws(() => validateProject(p));
   p.booth.pedestals = [piece("table6", { kind: "__proto__" })];
   assert.throws(() => validateProject(p), "only the listed kinds, not anything an object happens to carry");
@@ -40,12 +40,13 @@ test("sizes are the ones a show supplies", () => {
   assert.equal(FURNITURE.table6.height, 30);
   assert.equal(FURNITURE.table6.depth, 30);
   for (const [k, f] of Object.entries(FURNITURE)) {
-    // Each kind within its own limits; every kind but the box and the stairs
-    // shares the furniture limits the schema has always had.
+    // Each kind within its own limits; every booth kind shares the furniture
+    // limits the schema has always had. The box, the stairs and the home set
+    // carry their own.
     const lim = furnitureLimits(k);
     for (const d of ["width", "depth", "height"])
       assert.ok(f[d] >= lim[d][0] && f[d] <= lim[d][1], `${k} ${d} fits the schema`);
-    if (k !== "box" && k !== "stairs") assert.deepEqual(lim, { width: [4, 96], depth: [4, 96], height: [6, 96] });
+    if (k !== "box" && !f.limits) assert.deepEqual(lim, { width: [4, 96], depth: [4, 96], height: [6, 96] });
     assert.match(f.color, /^#[0-9a-f]{6}$/i);
   }
 });
