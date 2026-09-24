@@ -18,7 +18,6 @@ import {
   homography,
   convex,
   IN,
-  neighborPlacements,
   scalePanel,
   MAX_PANELS,
   panelKey,
@@ -109,33 +108,6 @@ test('environment settings round trip; legacy projects and invalid options',()=>
  p.booth.tentStyle='unknown';assert.throws(()=>validateProject(p));
 });
 
-test("neighbor gaps use footprint edges, corners leave the named side open, rear is independent", () => {
-  const p=blankProject(); p.booth.neighbors=true; p.booth.neighborGap=36; p.booth.neighborRear=true;p.booth.rearGap=48;
-  assert.deepEqual(neighborPlacements(p.booth), [
-    {side:"left",x:-156,z:0,rotation:0,width:120,depth:120},
-    {side:"right",x:156,z:0,rotation:0,width:120,depth:120},
-    // Turned around: the booth behind opens onto the next aisle, so what you
-    // see over your back wall is the back of a booth, not the inside of one.
-    {side:"rear",x:0,z:-168,rotation:180,width:120,depth:120},
-  ]);
-  // A neighbour is this booth's size, so a 10 x 20 stand is measured against
-  // 10 x 20 neighbours rather than two hardcoded 10 x 10 ones — and the gap,
-  // which is measured to the neighbour's centre, follows.
-  p.booth.width=240;
-  assert.equal(neighborPlacements(p.booth)[0].width,240,"the neighbour grew with the booth");
-  assert.equal(neighborPlacements(p.booth)[0].x,-276,"and the gap is still 36in edge to edge");
-  assert.equal(
-    Math.abs(neighborPlacements(p.booth)[0].x) - 240/2 - 240/2, 36,
-    "edge to edge, stated as the arithmetic it comes from",
-  );
-  p.booth.width=120;
-  p.booth.neighborLayout="corner-left";
-  assert.deepEqual(neighborPlacements(p.booth).map(n=>n.side),["right","rear"]);
-  p.booth.neighborLayout="corner-right";
-  assert.deepEqual(neighborPlacements(p.booth).map(n=>n.side),["left","rear"]);
-  p.booth.neighborLayout="island";assert.deepEqual(neighborPlacements(p.booth),[]);
-  p.booth.neighbors=false;assert.deepEqual(neighborPlacements(p.booth),[]);
-});
 test("legacy backups need no new fields; outside signage and labels round trip", () => {
   const p=demoProject();
   for(const key of ["neighborLayout","neighborGap","neighborRear","rearGap"])delete p.booth[key];

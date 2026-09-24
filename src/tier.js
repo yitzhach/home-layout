@@ -28,10 +28,9 @@ export const TIER_KEY = "booth.tier";
  * A feature not listed here is Lite, which is to say everyone's.
  */
 export const PRO_FEATURES = {
-  row: "Booth row",
   guide: "Hanging guide",
   video: "Video export",
-  templates: "Booth templates",
+  templates: "Home templates",
   align: "Align and distribute",
   underlay: "Floor plan underlay",
   clearance: "Clearance checks",
@@ -54,12 +53,6 @@ export const PRO_ACTIONS = {
   "preview-move": "video",
   "edit-timeline": "video",
   "save-template": "templates",
-  "row-booth-left": "row",
-  "row-booth-right": "row",
-  "row-count-left": "row",
-  "row-count-right": "row",
-  "row-space-left": "row",
-  "row-space-right": "row",
   "align-left": "align",
   "align-center": "align",
   "align-right": "align",

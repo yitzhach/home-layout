@@ -1,18 +1,16 @@
 import * as T from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { makeTent, environment } from "./environment.js";
+import { environment } from "./environment.js";
 import { signTexture } from "./signage.js";
 import { edgeMaterial } from "./edge-material.js";
 import { SHADOW_GLSL, SHADOW_KINDS, shadowPlan, shadowSpec } from "./dropshadow.js";
 import { TextureCache } from "./texture-cache.js";
 import { EnvironmentLighting, artEnvIntensity, DEFAULT_FIDELITY, showFixtures } from "./lighting.js";
-import { GROUND_CONSUMER, TENT_CONSUMER, TENT_WEAVE, WALL_CONSUMER, WALL_SET, UV_METRE, SurfaceTextures } from "./surfaces.js";
+import { GROUND_CONSUMER, WALL_CONSUMER, WALL_SET, SurfaceTextures } from "./surfaces.js";
 import { applyImageEdits, editedAspect, hasImageEdits } from "./image-edit.js";
 import { decodeAt, isPreflipped } from "./image-source.js";
-import { IN, PEDESTAL, FURNITURE, furnitureKind, boothPedestals, isShown, edgeColorOf, lightVisible, constrain, groundKind, groundUpload, constrainPanel, constrainPedestal, findPanel, findPedestal, isArtShow, lightBarSpec, isPanelKey, scalePanel, wallKeys, wallSpec } from "./model.js";
-import { lightBarBounce, lightBarFixtures, lightBarOptics, lightBarRail } from "./lightbar.js";
+import { IN, PEDESTAL, FURNITURE, furnitureKind, boothPedestals, isShown, edgeColorOf, lightVisible, constrain, groundKind, groundUpload, constrainPanel, constrainPedestal, findPanel, findPedestal, isPanelKey, scalePanel, wallKeys, wallSpec } from "./model.js";
 import { PEOPLE, makePerson, placePerson, resolvePerson } from "./people.js";
-import { rowLayout } from "./row.js";
 import { smartSnap } from "./guides.js";
 import { tagShown, walkStart, walkStep } from "./views.js";
 import { sameWall } from "./arrange.js";
@@ -1265,7 +1263,6 @@ export class BoothScene {
     // The other booths' walls. Kept apart from this booth's, which are what
     // the wall picker and the selection outline are about, but offered to a
     // drop so an original can be dragged straight onto a neighbour's wall.
-    this.rowWallObjects = [];
     this.pedestalObjects = [];
     this.pedestalFrames = {};
     this.personFrames = {};
@@ -1415,11 +1412,6 @@ export class BoothScene {
       exterior.rotation.y = Math.PI;
       g.add(exterior);
       this.frames[wall + "-outside"] = exterior;
-      // An art-show wall is one continuous surface — that is what a
-      // pro-panel wall is, and "no seams on these walls" is a measurement of
-      // the thing being planned, not a finish. The outdoor pop-up keeps its
-      // 30″ seam posts, feet and cap rail, because that is what it is made of.
-      if (isArtShow(p)) continue;
       const count = Math.ceil(width / (30 * IN));
       for (let i = 0; i <= count; i++) {
         const x = Math.min(width, i * 30 * IN);
@@ -1438,38 +1430,6 @@ export class BoothScene {
       this.box(width, 0.025, 0.08, width / 2, height, 0.0, rough("#26292b"), g);
     }
     this.surfaces.releaseMatching(WALL_CONSUMER, wallConsumers);
-    // The rest of the aisle. Every other booth in the row is this booth's
-    // size and stands on the same line, offset along X; its three walls are
-    // real geometry with real frames, so artwork hung in it is positioned,
-    // picked and dragged by exactly the code that hangs artwork at home.
-    // They are drawn plain — no seam posts, no fabric weave, no light bar —
-    // because they are the neighbours, and the booth being planned is the
-    // one that deserves the detail.
-    for (const slot of rowLayout(p.booth)) {
-      if (slot.kind !== "booth" || slot.home) continue;
-      const stand = new T.Group();
-      stand.name = "row-booth-" + slot.id;
-      stand.position.x = slot.x * IN;
-      this.group.add(stand);
-      for (const wall of ["back", "left", "right"]) {
-        const config = p.booth.walls[wall];
-        if (!config?.enabled) continue;
-        const g = this.wallFrame(wall);
-        stand.add(g);
-        this.frames[slot.id + ":" + wall] = g;
-        const width = config.width * IN,
-          height = config.height * IN;
-        const slab = this.box(width, height, 0.055, width / 2, height / 2, -WALL_SLAB_OFFSET, rough(p.booth.color), g);
-        slab.userData.wall = wall;
-        slab.userData.booth = slot.id;
-        this.rowWallObjects.push(slab);
-        const exterior = new T.Group();
-        exterior.position.set(width, 0, -0.063);
-        exterior.rotation.y = Math.PI;
-        g.add(exterior);
-        this.frames[slot.id + ":" + wall + "-outside"] = exterior;
-      }
-    }
     for (const a of p.art) {
       const frame = this.frames[frameKey(a)];
       if (!frame || !wallSpec(p, a.wall)?.enabled) continue;
@@ -1548,7 +1508,7 @@ export class BoothScene {
           .catch(() => {});
       }
     }
-    const fixtures = showFixtures(p.booth.fixtures, p.booth.envPreset, p.booth.venue);
+    const fixtures = showFixtures(p.booth.fixtures, p.booth.envPreset);
     for (const l of p.lights) {
       // A hidden spotlight is still in the list, still carries its position,
       // its aim and its power, and is simply not built. That is the whole
@@ -1603,11 +1563,9 @@ export class BoothScene {
       glow.userData.tag = "fixtures";
       this.group.add(glow);
     }
-    // The pop-up's front header rail. An art-show booth has no canopy frame
-    // to carry one; it gets the light bar below instead.
-    if (!isArtShow(p) && !p.booth.rooms?.length)
+    // The pop-up's front header rail, over the booth fixture's entrance.
+    if (!p.booth.rooms?.length)
       this.box(W, 0.025, 0.025, 0, H - 0.025, D * 0.2, rough("#2e3032"));
-    this.buildLightBar(p, rough);
     this.buildRoomFloors(p);
     this.buildPedestals(p);
     // Figures for scale. They are part of the picture, not of the booth: the
@@ -1626,31 +1584,6 @@ export class BoothScene {
       this.group.add(figure);
       this.personFrames[person.id] = figure;
     }
-    if (p.booth.tent) this.group.add(makeTent(W,D,H,p.booth.tentStyle || "classic"));
-    // Photographed canvas on every fabric panel in the scene, when its files
-    // are present. Asked of the whole group rather than of the tent just added,
-    // because the neighbouring booths environment() built are canopies too and
-    // a textured tent beside two procedural ones looks worse than three
-    // procedural ones. The panels carry their UVs in metres, so one UV unit is
-    // one metre: the same repeatFor() the ground uses, with a span of one
-    // instead of 180.
-    const fabric = [];
-    this.group.traverse(o => { if (o.userData?.fabric) fabric.push(o); });
-    if (!fabric.length) this.surfaces.release(TENT_CONSUMER);
-    else this.surfaces.load("canvas", TENT_CONSUMER).then(set => {
-      if (this.revision !== rev || !set) return;
-      let applied = false;
-      for (const panel of fabric)
-        applied = this.surfaces.applyTo(panel, set, {
-          planeMetres: UV_METRE, consumer: TENT_CONSUMER,
-          // A tent roof is white, lit from a bright sky and tone-mapped: a
-          // weave at its literal depth washes out to nothing. This is a
-          // rendering choice, not a measurement, so the relief is exaggerated
-          // until the fabric reads as fabric.
-          strength: TENT_WEAVE,
-        }) || applied;
-      if (applied) this.renderer.shadowMap.needsUpdate = true;
-    }).catch(() => {});
     this.applyTags();
     this.applySelection();
     this.refreshGuides();
@@ -1747,91 +1680,6 @@ export class BoothScene {
     // loop draws the outline on its next turn — and a synchronous frame on
     // top of that was a third full render for every click and every rebuild,
     // inside the click handler, on the machine least able to afford it.
-  }
-  /**
-   * The light bar and its heads. Nine directional fixtures spotting the three
-   * walls is what an art-show booth is lit with, and none of them is a
-   * spotlight anyone wants in the four-light list: where each one points is
-   * computed from the booth's measurements by `lightBarFixtures`, so the bar
-   * is described by five numbers and rebuilt whenever those change.
-   */
-  buildLightBar(p, rough) {
-    const rail = lightBarRail(p);
-    if (!rail.on) return;
-    const fixtures = lightBarFixtures(p);
-    if (!fixtures.length) return;
-    const spec = lightBarSpec(p.booth);
-    const optics = lightBarOptics(spec);
-    const bar = new T.Group();
-    bar.name = "light-bar";
-    bar.userData.tag = "fixtures";
-    this.group.add(bar);
-    // The white hall bouncing the bar back at itself. Without it every surface
-    // the nine beams miss falls to black, which reads harsher than the beams.
-    const bounce = lightBarBounce(p);
-    if (bounce > 0) {
-      const fill = new T.HemisphereLight(temperature(spec.kelvin), "#d8d5cf", bounce);
-      fill.name = "light-bar-bounce";
-      bar.add(fill);
-    }
-    const metal = new T.MeshStandardMaterial({
-      color: "#2b2e31",
-      roughness: 0.42,
-      metalness: 0.6,
-    });
-    // The rail itself, plus a drop at each end back to the booth's top rail.
-    this.box(rail.width * IN, 0.035, 0.035, 0, rail.y * IN, rail.z * IN, metal, bar);
-    // A short bracket at each end, running back toward the booth, so the bar
-    // reads as hung rather than floating.
-    for (const side of [-1, 1])
-      this.box(0.03, 0.03, 0.09, (side * rail.width * IN) / 2, rail.y * IN, rail.z * IN - 0.06, metal, bar);
-    for (const f of fixtures) {
-      const from = new T.Vector3(f.x * IN, f.y * IN, f.z * IN);
-      const to = new T.Vector3(f.tx * IN, f.ty * IN, f.tz * IN);
-      const light = new T.SpotLight(
-        temperature(f.kelvin),
-        f.power * optics.powerScale,
-        // Reach far enough to cross the booth diagonally and land on the wall.
-        26,
-        // Narrower than a floor-standing spot: a wall washer on a bar is aimed
-        // at one section of one wall, not at the room. How much narrower is
-        // the Diffusion slider's business — see `lightBarOptics`.
-        optics.angle,
-        optics.penumbra,
-        2,
-      );
-      light.position.copy(from);
-      light.target.position.copy(to);
-      // Off in the live viewport below High detail; see setBarShadows.
-      light.castShadow = this.barShadows;
-      // Nine shadow-casting spots is nine shadow passes. Half the map size of
-      // a hand-placed spotlight keeps that affordable; a wall wash is a soft
-      // edge anyway, so there is nothing in it to see.
-      light.shadow.mapSize.set(512, 512);
-      light.shadow.bias = -0.00008;
-      light.shadow.normalBias = optics.normalBias;
-      // Nine sources means nine shadows behind every pedestal. Scaling how
-      // dark each one goes is what a diffuser does in the room: it fills the
-      // shadow rather than removing it.
-      light.shadow.intensity = optics.shadowIntensity;
-      light.shadow.camera.near = 0.1;
-      light.shadow.camera.far = 26;
-      bar.add(light, light.target);
-      const head = new T.Mesh(new T.CylinderGeometry(0.035, 0.042, 0.12, 14), metal);
-      head.position.copy(from);
-      head.quaternion.setFromUnitVectors(
-        new T.Vector3(0, -1, 0),
-        to.clone().sub(from).normalize(),
-      );
-      head.castShadow = true;
-      bar.add(head);
-      const glow = new T.Mesh(
-        new T.SphereGeometry(0.024, 10, 8),
-        new T.MeshBasicMaterial({ color: temperature(f.kelvin) }),
-      );
-      glow.position.copy(from).addScaledVector(to.clone().sub(from).normalize(), 0.062);
-      bar.add(glow);
-    }
   }
   /**
    * Pedestals: a plinth with a solid top for cards, a tablet or a guest book.
@@ -2533,17 +2381,13 @@ export class BoothScene {
   }
   wallDrop(e, a) {
     this.point(e); this.group.updateMatrixWorld(true);
-    const hit = this.ray.intersectObjects([...this.wallObjects, ...(this.rowWallObjects || [])], false)[0];
+    const hit = this.ray.intersectObjects(this.wallObjects, false)[0];
     if (!hit || Math.abs(hit.face.normal.z) < .9) return null;
     const wall = hit.object.userData.wall, face = hit.face.normal.z > 0 ? "inside" : "outside";
-    // Dropping onto a wall says which booth as well as which wall: the work
-    // belongs to the booth it was let go of over, whichever one the row
-    // picker happened to be pointing at.
-    const booth = hit.object.userData.booth || undefined;
-    const frame = this.frames[frameKey({ booth, wall, face })];
+    const frame = this.frames[frameKey({ wall, face })];
     const local = frame.worldToLocal(hit.point.clone());
     const grid = this.snap ? 1 : .01;
-    return constrain(this.p, {...a, booth, wall, face,
+    return constrain(this.p, {...a, booth: undefined, wall, face,
       x:Math.round((local.x/IN-a.w/2)/grid)*grid,
       y:Math.round((local.y/IN-a.h/2)/grid)*grid});
   }

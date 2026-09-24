@@ -42,14 +42,3 @@ test("the setting is stored, bounded, and optional", () => {
   p.booth.fixtures = "sometimes";
   assert.throws(() => validateProject(p), /not a valid Booth Studio/);
 });
-
-// An art-show booth is indoors whatever the environment picker says: it stands
-// in its own white hall with a light bar overhead, which is the thing the
-// housings would be duplicating.
-test("the art-show venue counts as indoors on its own", () => {
-  assert.equal(isIndoor("studio", "artshow"), true);
-  assert.equal(isIndoor("artfair", "artshow"), true);
-  assert.equal(isIndoor("studio", "outdoor"), false);
-  assert.equal(showFixtures("auto", "studio", "artshow"), false, "so auto hides the housings there");
-  assert.equal(showFixtures("always", "studio", "artshow"), true, "and Always show still overrides it");
-});

@@ -2,7 +2,10 @@ import { validViews } from "./views.js";
 import { findRoomWall, homeRooms, wallOpenings, houseExtent, isRoomKey, roomWallLabel, roomWalls, starterRooms, validRooms } from "./rooms.js";
 import { editedAspect, validImageEdits } from "./image-edit.js";
 import { SHADOW_FIELD, SHADOW_MAX, shadowSpec } from "./dropshadow.js";
-import { hasRow, normalizeRow, rowLayout, MAX_SLOTS, MIN_SPACE, MAX_SPACE, MAX_GAP } from "./row.js";
+// Limits the booth app's row, venue, light bar and hall were stored within.
+// Those features are gone, but backups carrying them must still load, so
+// their records are still checked against what they were written to.
+const MAX_SLOTS = 41, MIN_SPACE = 6, MAX_SPACE = 600, MAX_GAP = 240, DIFFUSION_MAX = 3;
 export const IN = 0.0254;
 export const uid = () => globalThis.crypto.randomUUID();
 export function blankProject() {
@@ -17,13 +20,6 @@ export function blankProject() {
       depth: 120,
       height: 96,
       tent: false,
-      tentStyle: "classic",
-      // Which kind of show this booth is for. "outdoor" is the pop-up canopy
-      // this app has always drawn; "artshow" is an indoor convention booth:
-      // seamless white pro-panel walls, a light bar instead of a canopy, and
-      // an exhibition hall around it. Optional, so a schema-1 backup written
-      // before it existed loads as the outdoor booth it was.
-      venue: "outdoor",
       // The floor: either a shipped kind or "upload:<asset id>", one choice
       // from one list. See GROUND_KINDS below for why it holds both.
       ground: "studio",
@@ -89,17 +85,6 @@ export function blankProject() {
       // x/z are inches from the booth centre (+x right, +z toward the
       // entrance), rotation is degrees about the vertical axis.
       panels: [],
-      // The modular panel an art-show wall is built from. The walls keep
-      // their own authoritative width and height; this is the module they
-      // can be rebuilt from, and `linked` is what says they should be.
-      artShow: { ...ART_SHOW_PANEL },
-      // A light bar across the booth with directional heads spotting each
-      // wall. Derived scenery, not spotlights in `p.lights`: nine fixtures
-      // would fill that list four times over, and their aim is a consequence
-      // of the booth's own measurements rather than something to type.
-      lightBar: { ...LIGHT_BAR },
-      // The white exhibition hall an indoor booth stands in.
-      hall: { ...HALL },
       // Free-standing pedestals: a plinth with a solid top for cards, a
       // tablet or a guest book. Placed and dragged the way a free-standing
       // wall is, and like `panels` absent from every older backup.
@@ -181,7 +166,6 @@ export function homeProject() {
   b.groundPreset = "concrete";
   b.horizon = "studio";
   b.tent = false;
-  b.neighbors = false;
   for (const w of ["back", "left", "right"]) b.walls[w] = { enabled: false, width: Math.min(120, w === "back" ? b.width : b.depth), height: 96 };
   p.lights = [];
   p.ambient = 1.6;
@@ -200,179 +184,6 @@ export function demoHome() {
     if (!wall) return;
     p.art.push({ id: uid(), asset: null, title: `Sample work ${String(i + 1).padStart(2, "0")}`, wall, x, y, w, h, thickness: 1.5, offset: 0.75 });
   });
-  return p;
-}
-/**
- * The art-show booth, as asked for and as measured: a 144″ wide back wall and
- * 120″ side walls, all 144″ tall, in white, with no seams. These are the
- * defaults the venue switch writes; every one of them stays editable
- * afterwards, which is what "custom booth dimensions" means here.
- */
-export const ART_SHOW = {
-  width: 144,
-  depth: 120,
-  height: 144,
-  backWidth: 144,
-  sideWidth: 120,
-  wallHeight: 144,
-  color: "#f4f3f0",
-};
-/** The outdoor pop-up this app has always opened with. */
-export const OUTDOOR = {
-  width: 120,
-  depth: 120,
-  height: 96,
-  backWidth: 120,
-  sideWidth: 120,
-  wallHeight: 96,
-  color: "#45474a",
-};
-/** The individual display panel an art-show wall is built from. */
-export const ART_SHOW_PANEL = { width: 38, height: 144, linked: false };
-// The top of the Diffusion scale. It was 1 — "a fully frosted head" — until a
-// booth was looked at on a real monitor and reported as still harsh with the
-// slider at its maximum. The scale now runs to 3, and the extra travel is not
-// more frost: past 1 the hall itself takes over, opening the cones until they
-// stop reading as cones at all and letting the bounce off white walls do the
-// lighting. See `lightBarOptics`, which is where the two halves are written
-// out and where the reason each number stops where it does is recorded.
-//
-// **0..1 means exactly what it meant before.** Widening the range would have
-// been worthless if it moved the numbers underneath an already-composed booth:
-// a backup saved at 0.7 must light identically today. `lightBarOptics` is
-// piecewise for that reason alone, and `tests/artshow.test.js` pins the old
-// endpoints against literals rather than against the curve that produces them.
-export const DIFFUSION_MAX = 3;
-// What the Fixture brightness slider offers, which is deliberately not what
-// the schema accepts. The slider is a percentage of a bar that reads right:
-// 0 is dark, 50 is the default, 100 is twice the default and already more
-// than anyone wanted. The stored unit is unchanged and unchangeable — the
-// schema accepts 0..300 and always will, because narrowing a stored range
-// would refuse to open a backup that is already on someone's disk — so the
-// slider carries a scale instead, and `LIGHT_BAR_POWER_STEP` stored units is
-// one point of it.
-//
-// The numbers underneath moved twice, both times after someone looked at a
-// real monitor. 300 units of travel in steps of 5 squeezed the whole useful
-// range into the first fifth, so the control felt like it had two settings;
-// 70 was then called "beyond bright" and 60 — the old default — was still
-// much too hot. 8 stored units is where the bar was judged to look right, so
-// 8 is what the middle of the slider means and what a new booth opens at.
-//
-// A booth saved brighter than 100 keeps its value and widens its own slider
-// rather than being dragged down the moment the panel is drawn; see
-// `lightBarLevels` in main.js. That is why this is a slider maximum and not a
-// clamp, and it is the same move as `panelSlider`, `artSlider` and the
-// diffusion scale above.
-export const LIGHT_BAR_POWER_SLIDER_MAX = 100;
-export const LIGHT_BAR_POWER_STEP = 0.16;
-export const LIGHT_BAR = {
-  on: true,
-  height: 132,
-  count: 9,
-  power: 8,
-  kelvin: 3500,
-  // How diffused the wall wash is, 0..DIFFUSION_MAX. A real art-fair bar
-  // carries a frost or a barn-door diffuser over each head, and the hall's
-  // white walls bounce the rest; a bare point source aimed at a wall is what
-  // makes nine heads read as nine hot pools with nine crossing shadows behind
-  // every pedestal. 0 is the bare source, 1 is a fully frosted head, 3 is a
-  // booth lit mostly by the room. See `lightBarOptics`.
-  //
-  // The default was 0.7 and is 1.5: 0.7 was a number chosen rather than
-  // derived, and the first person to judge it on a real monitor said it was
-  // still harsh. 1.5 is half again past what the old scale could reach at all.
-  // It is a judgement made by eye, which is exactly the kind of thing a later
-  // diff will "clean up" back to a rounder number — don't.
-  diffusion: 1.5,
-};
-// 30 foot ceilings, as asked. The ceiling itself is off by default: it is
-// almost always out of frame, and drawing it puts a grey wash over the booth.
-export const HALL = { on: false, ceiling: 360, showCeiling: false };
-export const VENUES = { outdoor: "Outdoor · pop-up canopy", artshow: "Art show · indoor booth" };
-/** Accepts a project or a booth: the scene has one, the environment the other. */
-export const isArtShow = (p) => ((p?.booth || p)?.venue || "outdoor") === "artshow";
-/** Defaults filled in, so a backup written before these existed reads whole. */
-export const artShowPanel = (b) => ({ ...ART_SHOW_PANEL, ...(b.artShow || {}) });
-export const lightBarSpec = (b) => ({ ...LIGHT_BAR, ...(b.lightBar || {}) });
-export const hallSpec = (b) => ({ ...HALL, ...(b.hall || {}) });
-/**
- * Switch a booth between the two venues. Everything it writes is a default a
- * user can then change; what it must not do is leave a booth in a state its
- * own venue cannot describe — an art show with a canopy over it, or an
- * outdoor pop-up with 12ft walls it never asked for.
- */
-export function applyVenue(p, venue) {
-  const spec = venue === "artshow" ? ART_SHOW : OUTDOOR;
-  const b = p.booth;
-  b.venue = venue === "artshow" ? "artshow" : "outdoor";
-  b.width = spec.width;
-  b.depth = spec.depth;
-  b.height = spec.height;
-  b.color = spec.color;
-  b.walls.back = { ...b.walls.back, width: spec.backWidth, height: spec.wallHeight };
-  b.walls.left = { ...b.walls.left, width: spec.sideWidth, height: spec.wallHeight };
-  b.walls.right = { ...b.walls.right, width: spec.sideWidth, height: spec.wallHeight };
-  if (venue === "artshow") {
-    // A hall has a roof of its own; a canopy indoors is a contradiction.
-    b.tent = false;
-    b.ground = "studio";
-    b.groundPreset = "studio";
-    b.horizon = "studio";
-    // The neutral studio environment, not whatever photographed hall was
-    // selected before. An HDRI of a warehouse or an outdoor art fair behind a
-    // seamless white indoor booth is the surroundings of one venue lit onto
-    // another, and it reads exactly as wrong as it is. Like everything else
-    // here it is a default: the Environment picker still works afterwards.
-    b.envPreset = "studio";
-    b.wallFinish = "smooth";
-    b.artShow = { ...artShowPanel(b), height: spec.wallHeight };
-    b.lightBar = { ...lightBarSpec(b), on: true };
-    b.hall = { ...hallSpec(b), on: true };
-  } else {
-    b.hall = { ...hallSpec(b), on: false };
-    b.lightBar = { ...lightBarSpec(b), on: false };
-  }
-  // Art already hanging is measured against walls that just changed size.
-  p.art = p.art.map((a) => constrain(p, a));
-  p.booth.panels = boothPanels(p).map((panel) => constrainPanel(p, panel));
-  p.booth.pedestals = boothPedestals(p).map((ped) => constrainPedestal(p, ped));
-  return p;
-}
-/**
- * How many whole panels of the current module a wall is, and what it would
- * measure if it were built from them. Nothing is rewritten here: the readout
- * is what makes the module mean something on a wall whose width is its own.
- */
-export function panelCount(p, key) {
-  const spec = wallSpec(p, key), module = artShowPanel(p.booth);
-  if (!spec || !(module.width > 0)) return 0;
-  return Math.max(1, Math.round(spec.width / module.width));
-}
-/**
- * Rebuild the three perimeter walls from the panel module: each takes the
- * whole number of panels its current width is nearest to, at the module's
- * width and height — so a rebuild leaves the booth about the size it already
- * was, snapped to panels, rather than to whatever count it happened to have
- * at the old width. The footprint follows, because a wall wider than the
- * booth is not a booth anyone can build.
- */
-export function relinkArtShowWalls(p) {
-  const module = artShowPanel(p.booth);
-  const counts = {};
-  for (const key of ["back", "left", "right"]) counts[key] = panelCount(p, key);
-  for (const key of ["back", "left", "right"]) {
-    const width = Math.max(12, Math.min(360, counts[key] * module.width));
-    p.booth.walls[key] = {
-      ...p.booth.walls[key],
-      width: Math.round(width * 100) / 100,
-      height: module.height,
-    };
-  }
-  p.booth.width = Math.max(48, Math.min(360, p.booth.walls.back.width));
-  p.booth.depth = Math.max(48, Math.min(360, p.booth.walls.left.width));
-  p.booth.height = Math.max(48, Math.min(144, module.height));
-  p.art = p.art.map((a) => constrain(p, a));
   return p;
 }
 /**
@@ -921,9 +732,9 @@ export function validateProject(p) {
     for (const key of ["artistName", "city", "medium", "price"])
       if (a[key] !== undefined && (typeof a[key] !== "string" || a[key].length > 200)) fail();
     if (a.sourceId !== undefined && (typeof a.sourceId !== "string" || a.sourceId.length > 200)) fail();
-    // Which booth of the row it hangs in. Absent means this booth, which is
-    // what every work in every older backup means.
-    if (a.booth !== undefined && !(typeof a.booth === "string" && boothSlotIds(p.booth).has(a.booth))) fail();
+    // Which booth of the old booth row it hung in. Absent means this floor,
+    // which is what every work in every home means.
+    if (a.booth !== undefined && !(typeof a.booth === "string" && (p.booth.row?.slots || []).some((s) => s.id === a.booth && s.kind === "booth"))) fail();
     if (a.edits !== undefined && !validImageEdits(a.edits)) fail();
     if (a.stretch !== undefined && typeof a.stretch !== "boolean") fail();
     if (a.edgeTexture !== undefined && !["plain", "concrete", "wood", "metal"].includes(a.edgeTexture)) fail();
@@ -1069,40 +880,6 @@ export function convex(q) {
   });
 }
 
-/**
- * Neighbors use nominal footprint-edge gaps in inches, not center spacing.
- *
- * Each neighbour is the same size as this booth. A hall sells a row of equal
- * pitches, so a 10 x 20 stand beside two hardcoded 10 x 10 ones was drawing a
- * row that no hall lays out — and, because the gap was measured to a 120-inch
- * neighbour's centre, a booth that was not 120 inches deep also put its
- * neighbours at the wrong distance. Both numbers come from `b` now.
- *
- * Each placement also carries which way its booth faces. The one behind is
- * turned around: it opens onto the next aisle, so what this booth sees over
- * its back wall is the back of another booth, not the inside of one. Left and
- * right share this booth's aisle and so share its facing.
- */
-/** The ids of the booths in a row, home included. */
-export function boothSlotIds(booth) {
-  return new Set(rowLayout(booth).filter(s => s.kind === "booth").map(s => s.id));
-}
-export function neighborPlacements(b) {
-  if (!b.neighbors) return [];
-  const layout = b.neighborLayout || "inline", gap = b.neighborGap ?? 24;
-  const result = [], width = b.width, depth = b.depth;
-  const at = (side, x, z, rotation) => ({ side, x, z, rotation, width, depth });
-  // A row is the aisle drawn by hand, so the decorative booths either side
-  // would stand inside it. The one behind is a different axis and stays: a
-  // row says nothing about what backs onto it.
-  if (layout !== "island" && !hasRow(b)) {
-    if (layout !== "corner-left") result.push(at("left", -(b.width/2 + gap + width/2), 0, 0));
-    if (layout !== "corner-right") result.push(at("right", b.width/2 + gap + width/2, 0, 0));
-  }
-  if (b.neighborRear && layout !== "island")
-    result.push(at("rear", 0, -(b.depth/2 + (b.rearGap ?? gap) + depth/2), 180));
-  return result;
-}
 /** Uniform size adjustment preserves image proportions and the panel's center. */
 export function scalePanel(p, a, factor) {
   const wall = wallSpec(p, a.wall);

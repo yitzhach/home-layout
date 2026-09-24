@@ -71,28 +71,6 @@ const groundState = (page) => page.evaluate(() => {
     uv1: !!floor.geometry.attributes.uv1,
   };
 });
-// The tent's fabric panels, the meshes makeTent marks; the frame must be left
-// alone. Reported with the UV range, which is what carries the real size.
-const tentState = (page) => page.evaluate(() => {
-  const panels = [], frame = [];
-  window.__booth.scene.group.traverse((o) => {
-    if (!o.isMesh || !o.material) return;
-    if (o.userData?.fabric) {
-      const uv = o.geometry.attributes.uv.array;
-      let u = 0, v = 0;
-      for (let i = 0; i < uv.length; i += 2) { u = Math.max(u, uv[i]); v = Math.max(v, uv[i + 1]); }
-      panels.push({
-        map: o.material.map ? { repeat: o.material.map.repeat.x, colorSpace: o.material.map.colorSpace } : null,
-        normal: !!o.material.normalMap,
-        bump: !!o.material.bumpMap,
-        color: o.material.color.getHexString(),
-        u, v,
-      });
-    } else if (o.material.metalness > 0.5) frame.push({ map: !!o.material.map });
-  });
-  return { panels, frame };
-});
-
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
