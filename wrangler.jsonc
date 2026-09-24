@@ -6,8 +6,24 @@
   "build": {
     "command": "npm run build",
   },
+  // The Worker answers /api/* (the AI routes, phase 5) and hands everything
+  // else to the static app. See worker/index.js.
+  "main": "worker/index.js",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
   },
+  // Per browser and per address: six AI requests a minute. The namespace id is
+  // any number unique within the account.
+  "ratelimits": [
+    {
+      "name": "AI_LIMIT",
+      "namespace_id": "4701",
+      "simple": { "limit": 6, "period": 60 },
+    },
+  ],
+  // The owner's key is a secret, never in this file:
+  //   npx wrangler secret put ANTHROPIC_API_KEY
 }

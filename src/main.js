@@ -162,6 +162,8 @@ import { PhotoEditor } from "./photo.js";
 import { hangingGuide } from "./guide.js";
 import { dedupe, fold, rankTools } from "./toolsearch.js";
 import { MAX_OPENINGS, MAX_ROOMS, OPENING_KINDS, OPENING_LIMITS, ROOM_LIMITS, ROOM_TYPES, SIDES, SIDE_NAMES, constrainRoom, findRoom, homeRooms, houseExtent, newOpening, newRoom, resizeRoom, roomBeside, roomEdge, roomWalls } from "./rooms.js";
+import { askAI, photoPayload } from "./ai.js";
+import { DAYLIGHT_LIMITS, LIGHT_KINDS, LIGHT_LIMITS, MAX_LIGHTS, MONTHS, daylightSpec, hourLabel, newLight, roomLights } from "./fixtures.js";
 import { DEFAULT_CEILING, FLOOR_FINISHES, PAINTS, ceilingColor, floorColor, floorFinish, roomFinish, setFinish, sideColor, starterFinish } from "./finishes.js";
 import { PRO_FEATURES, TIERS, actionFeature, can, readTier, resolveTier, writeTier } from "./tier.js";
 // The furniture menu, home pieces first. The booth's own kinds stay listed
@@ -2043,7 +2045,7 @@ async function boot() {
     const r = selectedRoom && findRoom(p, selectedRoom);
     const heading = `<div class="panel-heading"><h2>Rooms</h2>${icon("house")}</div><p class="muted">Your floor plan, room by room. Rooms added beside each other share one wall; doors, windows and archways are cut into it from either side. Art hangs on any room wall from the Artwork tab.</p>`;
     const list = `<section><h3>Rooms <span>${rooms.length} / ${MAX_ROOMS}</span></h3>${rooms.map((x) => `<button class="wide layer-row ${x.id === selectedRoom ? "active" : ""}" data-action="room-select" data-room="${x.id}">${e(x.name)} <small>${fmtFeet(x.width)} × ${fmtFeet(x.depth)}</small></button>`).join("")}${rooms.length ? "" : `<p class="muted">No rooms yet.</p>`}${rooms.length ? "" : btn("room-first", "Add a first room", "plus", "primary wide")}${btn("room-starter", "Start from a starter floor", "house", "wide")}</section>`;
-    if (!r) return heading + list;
+    if (!r) return heading + list + daylightSection();
     const scope = "room|" + r.id;
     const f = (label, key, step = 1) => field(label, key, r[key], ...ROOM_LIMITS[key], step, "in", scope, `${r.name} ${label}`);
     const walls = SIDES.map((side) => `<label class="check-field"><input type="checkbox" data-field="wall-${side}" data-scope="${scope}" ${(r.open || []).includes(side) ? "" : "checked"}/>${SIDE_NAMES[side]} wall <small>${fmtFeet(roomEdge(r, side).length)}</small></label>`).join("");
@@ -2059,7 +2061,7 @@ async function boot() {
     const add = rooms.length < MAX_ROOMS
       ? `<label class="setting-label">New room<select id="new-room-type" aria-label="New room type">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${newRoomType === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="button-row">${SIDES.map((side) => `<button data-action="room-add" data-side="${side}" title="Add a room ${SIDE_NAMES[side].toLowerCase()} of ${e(r.name)}">${icon("plus")}<span>${SIDE_NAMES[side]}</span></button>`).join("")}</div><p class="muted">Adds the new room against that side of ${e(r.name)}, sharing its wall. Size and place it afterwards.</p>`
       : `<p class="muted">${MAX_ROOMS} rooms is the most one floor holds.</p>`;
-    return `${heading}${list}<section><h3>${e(r.name)}</h3><label class="setting-label">Name<input type="text" data-field="name" data-scope="${scope}" maxlength="120" aria-label="Room name" value="${e(r.name)}"/></label><label class="setting-label">Kind of room<select data-field="type" data-scope="${scope}" aria-label="Kind of room">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${(r.type || "other") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="field-pair">${f("Width", "width")}${f("Depth", "depth")}</div>${f("Ceiling height", "height")}<div class="field-pair">${f("Centre X", "x")}${f("Centre Z", "z")}</div><p class="muted">Width runs east–west, depth north–south. X and Z are the room's centre from the middle of the floor; +Z is south.</p></section>${finishesSection(r, scope)}<section><h3>Walls</h3>${walls}<p class="muted">Untick a wall to open the room up — open plan to the next room. A wall two rooms share is open if either room opens it.</p></section><section><h3>Doors, windows and archways <span>${(r.openings || []).length}</span></h3>${openings}${addOpening}</section><section><h3>Add a room beside it</h3>${add}</section><section><h3>Remove</h3><button data-action="room-delete" data-room="${r.id}" class="danger wide">${icon("trash-2")}<span>Delete ${e(r.name)}</span></button></section>`;
+    return `${heading}${list}<section><h3>${e(r.name)}</h3><label class="setting-label">Name<input type="text" data-field="name" data-scope="${scope}" maxlength="120" aria-label="Room name" value="${e(r.name)}"/></label><label class="setting-label">Kind of room<select data-field="type" data-scope="${scope}" aria-label="Kind of room">${Object.entries(ROOM_TYPES).map(([k, v]) => `<option value="${k}" ${(r.type || "other") === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><div class="field-pair">${f("Width", "width")}${f("Depth", "depth")}</div>${f("Ceiling height", "height")}<div class="field-pair">${f("Centre X", "x")}${f("Centre Z", "z")}</div><p class="muted">Width runs east–west, depth north–south. X and Z are the room's centre from the middle of the floor; +Z is south.</p></section>${finishesSection(r, scope)}${lightsSection(r)}<section><h3>Walls</h3>${walls}<p class="muted">Untick a wall to open the room up — open plan to the next room. A wall two rooms share is open if either room opens it.</p></section><section><h3>Doors, windows and archways <span>${(r.openings || []).length}</span></h3>${openings}${addOpening}</section><section><h3>Add a room beside it</h3>${add}</section><section><h3>Remove</h3><button data-action="room-delete" data-room="${r.id}" class="danger wide">${icon("trash-2")}<span>Delete ${e(r.name)}</span></button></section>${daylightSection()}`;
   }
   /** 150 → 12′ 6″. The room list reads in feet, as a house is talked about. */
   function fmtFeet(inches) {
@@ -2091,7 +2093,30 @@ async function boot() {
       return `<div class="finish-side"><label class="setting-label">${SIDE_NAMES[side]} side<select data-field="finish-side-mode-${side}" data-scope="${scope}" aria-label="${SIDE_NAMES[side]} side paint"><option value="room" ${own ? "" : "selected"}>Same as the room</option><option value="own" ${own ? "selected" : ""}>Its own colour</option></select></label>${own ? color("", "side-" + side, own, `${SIDE_NAMES[side]} side colour`) : ""}</div>`;
     }).join("");
     const floorId = floorFinish(r);
-    return `<section><h3>Finishes</h3><h4>Walls</h4>${color("Paint", "walls", walls, `${r.name} wall paint`)}${chips("walls", walls)}<p class="muted">${fin.walls ? "This room's own paint." : "The house's wall colour, until you choose one here."} A wall between two rooms is painted on each face by the room it looks into.</p>${sides}<h4>Floor</h4><label class="setting-label">Material<select data-field="finish-floor" data-scope="${scope}" aria-label="${e(r.name)} floor">${Object.entries(FLOOR_FINISHES).map(([k, v]) => `<option value="${k}" ${k === floorId ? "selected" : ""}>${e(v.label)}</option>`).join("")}</select></label>${color("Colour", "floorColor", floorColor(r), `${r.name} floor colour`)}${fin.floorColor ? `<button class="text-button" data-finish="floorColor" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to ${e(FLOOR_FINISHES[floorId].label.toLowerCase())}'s own colour</span></button>` : ""}<h4>Ceiling</h4>${color("Ceiling", "ceiling", ceilingColor(r), `${r.name} ceiling colour`)}${fin.ceiling && fin.ceiling !== DEFAULT_CEILING ? `<button class="text-button" data-finish="ceiling" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to white</span></button>` : ""}<p class="muted">The ceiling shows from inside a room — walk in, or look up from eye height — and stays out of the way from above.</p></section>`;
+    return `<section><h3>Finishes</h3><h4>Walls</h4>${color("Paint", "walls", walls, `${r.name} wall paint`)}${chips("walls", walls)}<p class="muted">${fin.walls ? "This room's own paint." : "The house's wall colour, until you choose one here."} A wall between two rooms is painted on each face by the room it looks into.</p><button class="text-button" data-action="ai-match" data-room="${r.id}" data-kind="wall">${icon("camera")}<span>Match paint to a photo · AI</span></button>${sides}<h4>Floor</h4><label class="setting-label">Material<select data-field="finish-floor" data-scope="${scope}" aria-label="${e(r.name)} floor">${Object.entries(FLOOR_FINISHES).map(([k, v]) => `<option value="${k}" ${k === floorId ? "selected" : ""}>${e(v.label)}</option>`).join("")}</select></label>${color("Colour", "floorColor", floorColor(r), `${r.name} floor colour`)}${fin.floorColor ? `<button class="text-button" data-finish="floorColor" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to ${e(FLOOR_FINISHES[floorId].label.toLowerCase())}'s own colour</span></button>` : ""}<button class="text-button" data-action="ai-match" data-room="${r.id}" data-kind="floor">${icon("camera")}<span>Match floor to a photo · AI</span></button><h4>Ceiling</h4>${color("Ceiling", "ceiling", ceilingColor(r), `${r.name} ceiling colour`)}${fin.ceiling && fin.ceiling !== DEFAULT_CEILING ? `<button class="text-button" data-finish="ceiling" data-room="${r.id}" data-value="">${icon("rotate-ccw")}<span>Back to white</span></button>` : ""}<p class="muted">The ceiling shows from inside a room — walk in, or look up from eye height — and stays out of the way from above.</p></section>`;
+  }
+  /**
+   * A room's light fixtures: add one of each kind, then place it by its
+   * offset from the room's centre, set its output and its colour, or switch
+   * it off without losing it. Heights follow the kind and the ceiling.
+   */
+  function lightsSection(r) {
+    const lights = roomLights(r);
+    const rows = lights.map((l) => {
+      const ls = `light|${r.id}|${l.id}`,
+        name = `${r.name} ${LIGHT_KINDS[l.kind].label}`;
+      return `<div class="opening-row"><h4>${LIGHT_KINDS[l.kind].label}</h4><label class="check-field"><input type="checkbox" data-field="on" data-scope="${ls}" aria-label="${e(name)} on" ${l.on !== false ? "checked" : ""}/>On</label><div class="field-pair">${field("From centre X", "x", l.x, -r.width / 2, r.width / 2, 1, "in", ls, `${name} X`)}${field("From centre Z", "z", l.z, -r.depth / 2, r.depth / 2, 1, "in", ls, `${name} Z`)}</div><div class="field-pair">${field("Output", "lumens", l.lumens, ...LIGHT_LIMITS.lumens, 50, "lm", ls, `${name} output`)}${field("Colour", "kelvin", l.kelvin, ...LIGHT_LIMITS.kelvin, 100, "K", ls, `${name} colour temperature`)}</div><button class="text-button" data-action="light-delete" data-room="${r.id}" data-light="${l.id}">${icon("trash-2")}<span>Remove</span></button></div>`;
+    }).join("");
+    const add = lights.length < MAX_LIGHTS
+      ? `<div class="button-row">${Object.entries(LIGHT_KINDS).map(([k, v]) => `<button data-action="light-add" data-room="${r.id}" data-kind="${k}">${icon("plus")}<span>${v.label}</span></button>`).join("")}</div>`
+      : `<p class="muted">${MAX_LIGHTS} fixtures is the most one room holds.</p>`;
+    return `<section><h3>Lights <span>${lights.length}</span></h3>${rows}${add}<p class="muted">A new fixture starts in the middle of the room. 800 lm is about a 60 W bulb; 2700 K is warm white, 4000 K neutral, 5000 K daylight. Turn on Daylight below to see them against the sun.</p></section>`;
+  }
+  /** The house's daylight: the sun from the hour, month and place. */
+  function daylightSection() {
+    const d = daylightSpec(p.booth);
+    const [hlo, hhi] = DAYLIGHT_LIMITS.hour;
+    return `<section><h3>Daylight</h3><label class="check-field"><input type="checkbox" data-field="on" data-scope="daylight" aria-label="Daylight on" ${d.on ? "checked" : ""}/>Sun through the windows</label>${d.on ? `<label class="setting-label">Time of day <output>${hourLabel(d.hour)}</output><input type="range" data-field="hour" data-scope="daylight" aria-label="Time of day" min="${hlo}" max="${hhi}" step="0.25" value="${d.hour}"/></label><label class="setting-label">Month<select data-field="month" data-scope="daylight" aria-label="Month">${MONTHS.map((m, i) => `<option value="${i + 1}" ${d.month === i + 1 ? "selected" : ""}>${m}</option>`).join("")}</select></label><div class="field-pair">${field("Latitude", "latitude", d.latitude, ...DAYLIGHT_LIMITS.latitude, 1, "°", "daylight", "Latitude")}${field("North faces", "north", d.north, ...DAYLIGHT_LIMITS.north, 1, "°", "daylight", "Compass bearing of the plan's north")}</div><p class="muted">Solar time. Latitude is where the house is (40° is New York or Madrid). "North faces" is the compass bearing the top of the plan really points to — 0 if the plan's north is true north. With the sun on, ceilings shade the rooms, so light comes in through windows and from the fixtures.</p>` : `<p class="muted">Off: the house is lit evenly from above, for planning. On: the sun at a time of day, month and latitude, through the windows.</p>`}</section>`;
   }
   function settleRooms() {
     p.booth.rooms = homeRooms(p).map(constrainRoom);
@@ -3095,6 +3120,56 @@ async function boot() {
         settleRooms();
       });
     },
+    // AI material help: a photo of a real surface becomes this room's floor
+    // material and tint, or its wall paint. The one call out; see ai.js.
+    "ai-match": (b) => {
+      const room = b.dataset.room,
+        kind = b.dataset.kind === "wall" ? "wall" : "floor";
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        toast("Looking at the photo…");
+        let payload;
+        try {
+          payload = await photoPayload(file);
+        } catch {
+          toast("That file could not be read as a photo.", true);
+          return;
+        }
+        const res = await askAI("material", { ...payload, kind });
+        if (res.error) return toast(res.error, true);
+        const m = res.value,
+          r = findRoom(p, room);
+        if (!r) return;
+        if (kind === "wall" && !m.color) return toast("No colour could be read from that photo.", true);
+        mutate(() => {
+          if (kind === "wall") r.finish = setFinish(r, "walls", m.color);
+          else {
+            if (m.finish) r.finish = setFinish(r, "floor", m.finish);
+            if (m.color) r.finish = setFinish(r, "floorColor", m.color);
+          }
+          if (!r.finish) delete r.finish;
+        });
+        toast(kind === "wall" ? `Painted ${m.color} — ${m.label}.` : `${m.finish ? FLOOR_FINISHES[m.finish].label : "Colour only"}${m.color ? " in " + m.color : ""} — ${m.label}.`);
+      });
+      input.click();
+    },
+    "light-add": (b) => {
+      const r = findRoom(p, b.dataset.room);
+      if (!r || roomLights(r).length >= MAX_LIGHTS) return;
+      mutate(() => (r.lights = [...roomLights(r), newLight(b.dataset.kind)]));
+    },
+    "light-delete": (b) => {
+      const r = findRoom(p, b.dataset.room);
+      if (!r) return;
+      mutate(() => {
+        r.lights = roomLights(r).filter((l) => l.id !== b.dataset.light);
+        if (!r.lights.length) delete r.lights;
+      });
+    },
     "opening-delete": (b) => {
       const r = findRoom(p, b.dataset.room);
       if (!r) return;
@@ -3899,6 +3974,19 @@ async function boot() {
         if (p.art.length < before) toast(`${before - p.art.length} work${before - p.art.length > 1 ? "s" : ""} taken down with the wall.`);
         return;
       }
+      if (String(scope).startsWith("light|")) {
+        const [, roomId, lightId] = String(scope).split("|");
+        const l = roomLights(findRoom(p, roomId)).find((x) => x.id === lightId);
+        if (!l) return;
+        const lim = { lumens: LIGHT_LIMITS.lumens, kelvin: LIGHT_LIMITS.kelvin }[key];
+        l[key] = lim ? Math.max(lim[0], Math.min(lim[1], Number(value))) : value;
+        return;
+      }
+      if (scope === "daylight") {
+        const lim = DAYLIGHT_LIMITS[key];
+        p.booth.daylight = { ...daylightSpec(p.booth), [key]: lim ? Math.max(lim[0], Math.min(lim[1], Number(value))) : !!value };
+        return;
+      }
       if (String(scope).startsWith("opening|")) {
         const [, roomId, openingId] = String(scope).split("|");
         const r = findRoom(p, roomId),
@@ -4122,9 +4210,10 @@ async function boot() {
       s.setSelectionRange(pos, pos);
       refreshIcons();
     }
-    if (ev.target.type === "range")
-      ev.target.closest("label").querySelector("output").textContent =
-        ev.target.value;
+    if (ev.target.type === "range") {
+      const out = ev.target.closest("label")?.querySelector("output");
+      if (out) out.textContent = ev.target.dataset.scope === "daylight" ? hourLabel(Number(ev.target.value)) : ev.target.value;
+    }
   });
   async function upload(files, type) {
     if (!files.length) return;

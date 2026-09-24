@@ -34,6 +34,7 @@ import { buildFurniture } from "./furniture.js";
 import { FLOOR_FINISHES, ceilingColor, floorColor, floorFinish, roomFinish, wallFaces } from "./finishes.js";
 import { floorPhoto, floorTexture } from "./finish-textures.js";
 import { findRoomWall, isRoomKey, wallOpenings, wallPieces } from "./rooms.js";
+import { LIGHT_KINDS, candela, daylightSpec, lightSpot, roomLights, sunDirection, sunLook } from "./fixtures.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
 const WALL_SLAB_OFFSET = 0.031;
@@ -1178,7 +1179,80 @@ export class BoothScene {
       ceiling.name = "room-ceiling:" + r.id;
       ceiling.userData.room = r.id;
       ceiling.receiveShadow = true;
+      // Only in daylight: then the sun is outside and the ceiling is what
+      // keeps it out of the room except through a window.
+      ceiling.castShadow = !!p.booth.daylight?.on;
       this.group.add(ceiling);
+    }
+    this.buildRoomLights(p);
+  }
+  /**
+   * Each room's fixtures: a point light where the bulb is and the fixture
+   * that holds it — a flush disc, a pendant's cord and shade, a downlight's
+   * ring, a lamp's stand and shade. A fixture that is off keeps its shape
+   * and loses its light and its glow.
+   *
+   * No fixture light casts a shadow. A point light's shadow is six extra
+   * renders, and a house of rooms has dozens of lights; instead each light's
+   * reach stops a little past its own room, so a lamp does not light the
+   * next room through a wall more than faintly.
+   */
+  buildRoomLights(p) {
+    const dark = new T.MeshStandardMaterial({ color: "#2b2b2b", roughness: 0.6, metalness: 0.3 });
+    for (const r of p.booth.rooms || []) {
+      const reach = Math.hypot(r.width, r.depth) * IN * 0.75;
+      for (const l of roomLights(r)) {
+        const kind = LIGHT_KINDS[l.kind] || LIGHT_KINDS.ceiling,
+          at = lightSpot(r, l),
+          on = l.on !== false,
+          g = new T.Group();
+        g.position.set(at.x * IN, at.y * IN, at.z * IN);
+        g.name = "room-light:" + l.id;
+        g.userData.room = r.id;
+        g.userData.light = l.id;
+        const glow = new T.MeshStandardMaterial({
+          color: "#f4efe6",
+          emissive: on ? temperature(l.kelvin) : "#000000",
+          emissiveIntensity: on ? 1.6 : 0,
+          roughness: 0.5,
+          side: T.DoubleSide,
+        });
+        const ceilingY = (r.height - at.y) * IN;
+        if (l.kind === "ceiling") {
+          g.add(new T.Mesh(new T.CylinderGeometry(0.17, 0.2, 0.08, 24), glow));
+        } else if (l.kind === "recessed") {
+          const ring = new T.Mesh(new T.CylinderGeometry(0.07, 0.07, 0.01, 20), glow);
+          g.add(ring);
+        } else if (l.kind === "pendant") {
+          const cord = new T.Mesh(new T.CylinderGeometry(0.004, 0.004, ceilingY, 6), dark);
+          cord.position.y = ceilingY / 2;
+          const shade = new T.Mesh(new T.ConeGeometry(0.2, 0.22, 24, 1, true), dark);
+          shade.position.y = 0.08;
+          const bulb = new T.Mesh(new T.SphereGeometry(0.05, 12, 8), glow);
+          g.add(cord, shade, bulb);
+        } else {
+          // Lamps: a stand from the floor to the shade, and the shade.
+          const standH = at.y * IN;
+          const base = new T.Mesh(new T.CylinderGeometry(0.12, 0.14, 0.03, 20), dark);
+          base.position.y = -standH + 0.015;
+          const pole = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, standH, 8), dark);
+          pole.position.y = -standH / 2;
+          const shade = new T.Mesh(new T.CylinderGeometry(l.kind === "table" ? 0.12 : 0.16, l.kind === "table" ? 0.17 : 0.22, l.kind === "table" ? 0.2 : 0.28, 24, 1, true), glow);
+          g.add(base, pole, shade);
+        }
+        g.traverse((o) => {
+          if (o.isMesh) o.castShadow = o.receiveShadow = false;
+        });
+        if (on) {
+          const light = new T.PointLight(temperature(l.kelvin), candela(l), reach, 2);
+          // Below a ceiling-mounted body, so the light is not inside its own
+          // fixture and the ceiling above still reads lit.
+          light.position.y = kind.mount === "ceiling" ? -0.12 : 0;
+          light.castShadow = false;
+          g.add(light);
+        }
+        this.group.add(g);
+      }
     }
   }
   box(w, h, d, x, y, z, mat, parent = this.group) {
@@ -1355,8 +1429,21 @@ export class BoothScene {
     this.buildModels(p, rev);
     const ambient = new T.HemisphereLight("#e9f1ff", "#858079", p.ambient);
     this.group.add(ambient);
-    const fill = new T.DirectionalLight("#fff4df", 0.6);
-    fill.position.set(-3, 6, 5);
+    // With daylight on, the one directional light is the sun: placed from the
+    // hour, month and latitude, warm and weak near the horizon, gone at night.
+    // Ceilings then cast shadows (buildRoomFloors), so a room is lit by what
+    // comes through its windows and its own fixtures, not from above.
+    const day = daylightSpec(p.booth),
+      sun = day.on ? sunDirection(day) : null,
+      look = sun ? sunLook(sun.altitude) : null;
+    const fill = new T.DirectionalLight(look ? temperature(look.kelvin) : "#fff4df", look ? look.strength : 0.6);
+    if (sun) {
+      const far = Math.max(8, Math.max(W, D) * 1.2);
+      fill.position.set(sun.x * far, Math.max(0.05, sun.y) * far, sun.z * far);
+      fill.name = "daylight-sun";
+      fill.userData.altitude = sun.altitude;
+      ambient.intensity = p.ambient * (sun.altitude > 0 ? 0.35 + 0.25 * Math.min(1, sun.altitude / 30) : 0.12);
+    } else fill.position.set(-3, 6, 5);
     fill.castShadow = true;
     fill.shadow.mapSize.set(1024, 1024);
     // Big enough to cover the whole floor: outside its box the shadow map

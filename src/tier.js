@@ -38,6 +38,8 @@ export const PRO_FEATURES = {
   elevations: "Elevations to scale",
   box: "Draw a box",
   glb: "3D model import and export",
+  lighting: "Light fixtures",
+  ai: "AI assist",
 };
 
 /**
@@ -74,6 +76,8 @@ export const PRO_ACTIONS = {
   "draw-box": "box",
   "upload-model": "glb",
   "export-glb": "glb",
+  "light-add": "lighting",
+  "ai-match": "ai",
 };
 
 export const resolveTier = (tier) => (TIERS[tier] ? tier : DEFAULT_TIER);

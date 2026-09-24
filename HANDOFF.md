@@ -12,13 +12,21 @@ app learned — its rules, its tests, its hard-won bugs — is in
 
 - Repo: https://github.com/yitzhach/home-layout. `main` is production through
   Cloudflare's Git integration (Worker `home-layout`); merging is deploying.
-- **State: phases 1 and 2 are built — the house, its furniture and its
-  finishes.** A first visit opens a starter floor (living room, kitchen,
-  bedroom, bathroom) seen from above like a doll's house, each room floored
-  as its kind usually is. The details are the next two sections.
+- **State: phases 1, 2, 4 and 5 are built — the house, its furniture and
+  finishes, its lights and daylight, and the AI Worker.** Phase 3 (the wall
+  photo) is not; the owner chose to do 4 and 5 first. A first visit opens a
+  starter floor (living room, kitchen, bedroom, bathroom) seen from above like
+  a doll's house, each room floored as its kind usually is. The details are
+  the sections below.
+- **The AI is off on the live site until the owner sets the key**:
+  `npx wrangler secret put ANTHROPIC_API_KEY` (or the Worker's Settings →
+  Variables and Secrets in the Cloudflare dashboard). Until then every AI
+  button says "AI is not set up on this site yet" and nothing else changes.
 - `wrangler.jsonc` carries `build.command: "npm run build"`: Cloudflare's Git
   integration runs only `npx wrangler deploy`, and without it the first deploy
-  failed for want of `dist/`.
+  failed for want of `dist/`. Since phase 5 it also names a Worker script,
+  `worker/index.js`, which answers `/api/*` and hands everything else to the
+  static assets (`run_worker_first`), and a rate-limiting binding `AI_LIMIT`.
 
 ## Phase 1 — what was built and how it fits
 
@@ -132,6 +140,92 @@ app learned — its rules, its tests, its hard-won bugs — is in
   furniture does not know which room it is in; patterns are unjudged by eye —
   no session can look at a render.
 
+## Phase 4 — light fixtures and daylight
+
+- **Fixtures are `room.lights`**, optional: `[{ id, kind, x, z, lumens,
+  kelvin, on }]`, at most 12 a room. `src/fixtures.js` is all of it and is
+  pure; `validLights` is called from `validateProject`. `x`/`z` are inches
+  from the room's centre, so a fixture moves with its room and is deleted
+  with it; `lightSpot` clamps it inside the room (6″ from the walls) so a room
+  made smaller keeps its lights. Height is not stored: a ceiling kind hangs
+  its `drop` below the room's ceiling, a lamp stands at its kind's `y`.
+  Kinds: ceiling (flush), pendant (30″ drop), recessed downlight, floor lamp
+  (60″), table lamp (26″). Not `booth.fixtures` — that name was already the
+  booth's spotlight-housing display mode.
+- **In the scene** (`scene.buildRoomLights`, called from `buildRoomFloors`)
+  each fixture is a group `room-light:<id>` with its shape and, when on, a
+  `PointLight` in candela (`lumens / 4π`, doubled for a downlight), decay 2,
+  its reach cut at ¾ of its room's diagonal. **No fixture casts a shadow** —
+  six extra renders per light — so light does leak faintly through a wall
+  into the next room; the cut-off reach is what keeps that small. A fixture
+  switched off keeps its shape and loses its light and glow.
+- **Daylight is `booth.daylight`**, optional: `{ on, hour, month, latitude,
+  north }` (`validDaylight`; `daylightSpec` fills defaults: 3 pm, June, 40°,
+  north 0). `sunPosition` is the textbook approximation — declination from
+  the day of the year, hour angle from solar noon, solar time, no equation of
+  time — good to a degree or two. `north` is the compass bearing the plan's
+  top really faces. With daylight on, the scene's one directional light
+  becomes the sun (`daylight-sun`), placed from `sunDirection`, weak and warm
+  near the horizon, gone below it (`sunLook`), the hemisphere ambient drops,
+  and **ceilings cast shadows**, so a room is lit through its windows and by
+  its fixtures. Off, the house is lit evenly from above as in phase 2.
+- **UI:** Rooms tab → a room → Lights (add each kind, place, output, colour,
+  on/off, remove); and Daylight at the bottom of the tab for the whole house
+  (on/off, time-of-day slider, month, latitude, north).
+- **Tier:** `light-add` is the Pro feature `lighting`; daylight is a field
+  and not gated. Everything is still unlocked (`DEFAULT_TIER = "pro"`).
+- **Tests:** `tests/fixtures.test.js` (sun geometry against noon-due-south,
+  east in the morning, midsummer higher than midwinter; plan rotation;
+  placement and clamping; validation) and `tests/view-lights.mjs` (adding,
+  moving and switching off fixtures; the sun at 9, 12, 18 and after dark;
+  ceilings shading only in daylight; reload and undo).
+- **Rough edges:** the brightness numbers are physically reasoned but unjudged
+  by eye — no session can look at a render; there is no bloom, so a bulb is a
+  bright material, not a glare; the sky and background do not change with the
+  hour; fixtures cannot be dragged in the scene, only typed; wall sconces and
+  track lights are not kinds yet.
+
+## Phase 5 — the AI Worker
+
+- **`worker/index.js`** is the Worker's script. `/api/*` runs it first; every
+  other path goes to `env.ASSETS` exactly as before. Routes:
+  `GET /api/ai/status` → `{ enabled }` (whether the key is set);
+  `POST /api/ai/material` `{ image, mediaType, kind: floor|wall }` →
+  `{ label, finish, color, roughness }`, `finish` one of `FLOOR_FINISHES` or
+  null; `POST /api/ai/corners` `{ image, mediaType }` → `{ found, corners }`,
+  four `[x, y]` fractions TL, TR, BR, BL. **Nothing calls `corners` yet**: it
+  is there for phase 3's wall photo to call as its "find the corners" button.
+- **The call:** the official `@anthropic-ai/sdk` (a dependency; wrangler
+  bundles it), model `claude-opus-5`, structured output
+  (`output_config.format` JSON schema), effort low, and server-side refusal
+  fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`).
+  Answers are cleaned (`cleanMaterial`, `cleanCorners`) before they reach the
+  app — an unknown finish becomes null, a bad colour null, corners clamped.
+- **Guards, in order, all before anything is spent:** 404 for other paths,
+  405 for other methods, 403 when an `Origin` header is not this site, 503
+  without the key, 413/400 for a body too big or not a base64 JPEG/PNG/WebP
+  under 1.5 MB, then the rate limit — `AI_LIMIT`, 6 a minute, counted
+  separately for the address (`cf-connecting-ip`) and the browser's random
+  id (`x-browser-id`, kept in localStorage as `home.browserId`); either
+  exhausted is 429. The limit's `namespace_id` in wrangler.jsonc is an
+  arbitrary number, unique within the account.
+- **The browser side is `src/ai.js`:** asks status once per page, shrinks the
+  photo to 1024px JPEG, posts, and returns `{ value }` or `{ error }` — never
+  throws. The dev server has no `/api`, so under `npm run dev` AI reads as not
+  set up; `wrangler dev` with a `.dev.vars` holding the key runs it for real.
+- **UI:** Rooms tab → a room → Finishes: "Match paint to a photo · AI" sets
+  the room's wall paint; "Match floor to a photo · AI" sets the floor
+  material and tint. Both are the Pro feature `ai`.
+- **Tests:** `tests/worker.test.js` (the Worker with stand-ins for Anthropic
+  and the limiter: status, static fall-through, the request sent, every
+  guard, both routes, refusal, garbled and failed calls) and
+  `tests/ai.test.js`; `view-lights.mjs` drives both buttons against a mocked
+  `/api`. **No session has made a real call**: the key is the owner's.
+- **Not built:** a tileable texture from a photo (crop and blend, made in the
+  browser — Claude cannot make images); roughness from the model is returned
+  but not applied (floors take their finish's roughness); a daily cap per
+  browser (the binding only counts 10 s or 60 s windows).
+
 ## What the owner decided (2026-09-24)
 
 - **Scope:** one whole floor of connected rooms per project. More storeys
@@ -172,6 +266,12 @@ app learned — its rules, its tests, its hard-won bugs — is in
 2. ~~Furniture set and materials per wall, floor and ceiling.~~ Done; the
    owner should look at the floor patterns and furniture on the live site,
    and supply photographs under `public/assets/materials/<id>/color.jpg`.
-3. Wall photo, manual four-corner straightening.
-4. Fixtures and daylight.
-5. The AI Worker: wall mapping and material help.
+3. **Next:** wall photo, manual four-corner straightening. When it is built,
+   add its "Find the corners · AI" button on `askAI("corners", …)` — the
+   Worker route is already there and tested.
+4. ~~Fixtures and daylight.~~ Done; the owner should judge on the live site
+   how bright fixtures and the sun look, and whether rooms are too dark from
+   the doll's-house view with daylight on.
+5. ~~The AI Worker: wall mapping and material help.~~ Done except the key:
+   the owner runs `npx wrangler secret put ANTHROPIC_API_KEY`, then tries
+   "Match floor to a photo" on the live site. Wall mapping waits on phase 3.

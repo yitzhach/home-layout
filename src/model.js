@@ -1,5 +1,6 @@
 import { validViews } from "./views.js";
 import { starterFinish, validFinish } from "./finishes.js";
+import { validDaylight, validLights } from "./fixtures.js";
 import { findRoomWall, homeRooms, wallOpenings, houseExtent, isRoomKey, roomWallLabel, roomWalls, starterRooms, validRooms } from "./rooms.js";
 import { editedAspect, validImageEdits } from "./image-edit.js";
 import { SHADOW_FIELD, SHADOW_MAX, shadowSpec } from "./dropshadow.js";
@@ -919,6 +920,8 @@ export function validateProject(p) {
   // Rooms: the house itself. Optional, like every other list here.
   if (!validRooms(p.booth.rooms)) fail();
   if (!homeRooms(p).every((r) => validFinish(r.finish))) fail();
+  if (!homeRooms(p).every((r) => validLights(r.lights))) fail();
+  if (!validDaylight(p.booth.daylight)) fail();
   const roomIds = new Set(homeRooms(p).map((r) => r.id));
   const ids = new Set();
   for (const a of p.art) {
