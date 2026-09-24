@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 const server=await createServer({server:{host:'127.0.0.1',port:5186}});await server.listen();
 const browser=await chromium.launch({headless:true,...(process.env.BOOTH_TEST_CHROMIUM?{executablePath:process.env.BOOTH_TEST_CHROMIUM}:{}),args:['--no-sandbox','--enable-unsafe-swiftshader','--use-angle=swiftshader','--use-gl=angle','--in-process-gpu','--single-process']});
 try {
-const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5186');await page.waitForFunction(()=>!!window.__booth?.scene);await page.locator('[data-tab="layout"]').click();
+const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5186/?fixture=booth');await page.waitForFunction(()=>!!window.__booth?.scene);await page.locator('[data-tab="layout"]').click();
 await page.getByLabel('Ground',{exact:true}).selectOption('grass');await page.getByLabel('Horizon',{exact:true}).selectOption('park');
 await fs.mkdir('docs/previews',{recursive:true});
 for(const style of ['classic','peak','barrel','dome']) {await page.getByLabel('Tent style',{exact:true}).selectOption(style);await page.waitForTimeout(200);assert.equal(await page.evaluate(s=>!!window.__booth.scene.group.getObjectByName('tent-'+s),style),true);await page.locator('#scene').screenshot({path:`docs/previews/${style}.jpg`,type:'jpeg',quality:86});}

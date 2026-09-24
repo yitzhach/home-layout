@@ -20,7 +20,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5211');
+  await page.goto('http://127.0.0.1:5211/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   const notes = () => page.evaluate(() => [...document.querySelectorAll('.scene-label-note')].filter((n) => !n.hidden).map((n) => ({ kind: n.className, text: n.textContent })));
 

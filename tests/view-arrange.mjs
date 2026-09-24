@@ -18,7 +18,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5213');
+  await page.goto('http://127.0.0.1:5213/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   const project = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__booth.project)));
   const blur = () => page.evaluate(() => document.activeElement?.blur());

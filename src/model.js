@@ -1,4 +1,5 @@
 import { validViews } from "./views.js";
+import { findRoomWall, homeRooms, wallOpenings, houseExtent, isRoomKey, roomWallLabel, roomWalls, starterRooms, validRooms } from "./rooms.js";
 import { editedAspect, validImageEdits } from "./image-edit.js";
 import { SHADOW_FIELD, SHADOW_MAX, shadowSpec } from "./dropshadow.js";
 import { hasRow, normalizeRow, rowLayout, MAX_SLOTS, MIN_SPACE, MAX_SPACE, MAX_GAP } from "./row.js";
@@ -158,6 +159,47 @@ export function demoProject() {
       offset: 0.75,
     }),
   );
+  return p;
+}
+/**
+ * A new home: the starter floor of rooms, and a booth's settings turned to an
+ * interior. `blankProject` is still the base every record starts from — it is
+ * what schema 1 was written against and what the older tests measure — so a
+ * home is that base with its perimeter walls off (the rooms stand the walls),
+ * its footprint grown to hold the rooms, a wood floor, pale walls and the
+ * booth's two spotlights taken down, since a house is lit by its rooms.
+ */
+export function homeProject() {
+  const p = blankProject();
+  const b = p.booth;
+  p.name = "My home";
+  b.rooms = starterRooms();
+  Object.assign(b, houseExtent(b.rooms));
+  b.height = 96;
+  b.color = "#eeebe4";
+  b.ground = "concrete";
+  b.groundPreset = "concrete";
+  b.horizon = "studio";
+  b.tent = false;
+  b.neighbors = false;
+  for (const w of ["back", "left", "right"]) b.walls[w] = { enabled: false, width: Math.min(120, w === "back" ? b.width : b.depth), height: 96 };
+  p.lights = [];
+  p.ambient = 1.6;
+  return p;
+}
+/** A home with a few sample works on the living room walls, for a first visit. */
+export function demoHome() {
+  const p = homeProject();
+  const living = p.booth.rooms[0];
+  const key = (side) => roomWalls(p).find((w) => w.room === living.id && w.side === side)?.key;
+  [
+    [key("n"), 60, 40, 36, 48],
+    [key("n"), 108, 46, 24, 36],
+    [key("w"), 110, 40, 40, 30],
+  ].forEach(([wall, x, y, w, h], i) => {
+    if (!wall) return;
+    p.art.push({ id: uid(), asset: null, title: `Sample work ${String(i + 1).padStart(2, "0")}`, wall, x, y, w, h, thickness: 1.5, offset: 0.75 });
+  });
   return p;
 }
 /**
@@ -375,7 +417,14 @@ export const FURNITURE = {
   // Draw-a-box: a plain block at any size — a riser, a plinth, a stage, a
   // custom counter. Drawn on the floor with the Box tool, then pulled up.
   box: { label: "Box · riser, plinth or stage", width: 48, depth: 24, height: 12, color: "#e9e6df" },
+  // A straight flight to the floor above: 7¾″ risers and 10″ treads are the
+  // usual residential code, and the height is floor to floor. Its footprint
+  // runs up toward −Z, so it climbs away from whoever stands at its foot.
+  stairs: { label: "Stairs · straight flight", width: 36, depth: 130, height: 108, color: "#b48a5e", limits: { width: [24, 96], depth: [40, 240], height: [12, 144] } },
 };
+/** The size limits of one kind of floor piece. */
+export const furnitureLimits = (kind) =>
+  kind === "box" ? BOX_LIMITS : FURNITURE[kind]?.limits || { width: [4, 96], depth: [4, 96], height: [6, 96] };
 /** A drawn box may be far bigger than a piece of furniture: a stage. */
 export const BOX_LIMITS = { width: [1, 360], depth: [1, 360], height: [1, 144] };
 /** Models brought in as .glb, stood on the floor. */
@@ -407,6 +456,7 @@ export const wallKeys = (p) => [
   "back",
   "left",
   "right",
+  ...roomWalls(p).map((w) => w.key),
   ...boothPanels(p).map((panel) => panelKey(panel.id)),
 ];
 /**
@@ -416,6 +466,13 @@ export const wallKeys = (p) => [
  * returns null; callers treat that the way they treat a hidden wall.
  */
 export function wallSpec(p, key) {
+  // A room's wall: derived from the room, never hidden on its own — a side
+  // that should not be there is opened in the room instead, and then it has
+  // no key at all.
+  if (isRoomKey(key)) {
+    const wall = findRoomWall(p, key);
+    return wall ? { enabled: true, width: wall.width, height: wall.height, room: wall } : null;
+  }
   if (isPanelKey(key)) {
     const panel = findPanel(p, key);
     // A hidden panel reads exactly as a switched-off perimeter wall does, so
@@ -428,6 +485,7 @@ export function wallSpec(p, key) {
   return p.booth.walls[key] || null;
 }
 export const wallLabel = (p, key) => {
+  if (isRoomKey(key)) return roomWallLabel(p, key) || "Room wall";
   const panel = findPanel(p, key);
   if (panel) return panel.name || "Panel";
   return key ? key[0].toUpperCase() + key.slice(1) + " wall" : "";
@@ -447,6 +505,14 @@ export function boundWarning(p, a) {
     a.y + a.h > wall.height + 0.001
   )
     return "Artwork extends beyond this wall. Adjust its size or placement.";
+  if (wall.room) {
+    const hit = wallOpenings(p, wall.room).find((o) => {
+      // An outside face is the same wall seen from behind: x runs the other way.
+      const x0 = a.face === "outside" ? wall.width - a.x - a.w : a.x;
+      return x0 < o.x + o.width && x0 + a.w > o.x && a.y < o.sill + o.height && a.y + a.h > o.sill;
+    });
+    if (hit) return `Artwork overlaps a ${hit.kind === "arch" ? "archway" : hit.kind} in this wall. Move it along the wall.`;
+  }
   return "";
 }
 export function constrain(p, a) {
@@ -623,9 +689,9 @@ export function validateProject(p) {
   )
     fail();
   if (
-    !finite(p.booth.width, 48, 360) ||
-    !finite(p.booth.depth, 48, 360) ||
-    !finite(p.booth.height, 48, 144) ||
+    !finite(p.booth.width, 48, 1200) ||
+    !finite(p.booth.depth, 48, 1200) ||
+    !finite(p.booth.height, 48, 240) ||
     !/^#[0-9a-f]{6}$/i.test(p.booth.color) ||
     typeof p.booth.tent !== "boolean"
   )
@@ -707,11 +773,11 @@ export function validateProject(p) {
         !ped.id ||
         ped.id.length > 200 ||
         seen.has(ped.id) ||
-        !finite(ped.width, ...(ped.kind === "box" ? BOX_LIMITS.width : [4, 96])) ||
-        !finite(ped.depth, ...(ped.kind === "box" ? BOX_LIMITS.depth : [4, 96])) ||
-        !finite(ped.height, ...(ped.kind === "box" ? BOX_LIMITS.height : [6, 96])) ||
-        !finite(ped.x, -360, 360) ||
-        !finite(ped.z, -360, 360) ||
+        !finite(ped.width, ...furnitureLimits(ped.kind).width) ||
+        !finite(ped.depth, ...furnitureLimits(ped.kind).depth) ||
+        !finite(ped.height, ...furnitureLimits(ped.kind).height) ||
+        !finite(ped.x, -600, 600) ||
+        !finite(ped.z, -600, 600) ||
         !finite(ped.rotation, -180, 180)
       )
         fail();
@@ -817,10 +883,10 @@ export function validateProject(p) {
         panel.id.length > 200 ||
         panelIds.has(panel.id) ||
         panel.id.includes(":") ||
-        !finite(panel.width, 12, 360) ||
+        !finite(panel.width, 12, 600) ||
         !finite(panel.height, 24, 144) ||
-        !finite(panel.x, -360, 360) ||
-        !finite(panel.z, -360, 360) ||
+        !finite(panel.x, -600, 600) ||
+        !finite(panel.z, -600, 600) ||
         !finite(panel.rotation, -180, 180)
       )
         fail();
@@ -829,6 +895,9 @@ export function validateProject(p) {
       panelIds.add(panel.id);
     }
   }
+  // Rooms: the house itself. Optional, like every other list here.
+  if (!validRooms(p.booth.rooms)) fail();
+  const roomIds = new Set(homeRooms(p).map((r) => r.id));
   const ids = new Set();
   for (const a of p.art) {
     if (
@@ -837,10 +906,11 @@ export function validateProject(p) {
       typeof a.title !== "string" ||
       a.title.length > 200 ||
       !(["back", "left", "right"].includes(a.wall) ||
-        (isPanelKey(a.wall) && panelIds.has(panelIdOf(a.wall)))) ||
+        (isPanelKey(a.wall) && panelIds.has(panelIdOf(a.wall))) ||
+        (isRoomKey(a.wall) && roomIds.has(a.wall.split(":")[1]))) ||
       !finite(a.w, 1, 360) ||
       !finite(a.h, 1, 360) ||
-      !finite(a.x, -360, 360) ||
+      !finite(a.x, -600, 600) ||
       !finite(a.y, -360, 360) ||
       !finite(a.thickness, 0.1, 12) ||
       !finite(a.offset, 0, 12)
@@ -914,8 +984,8 @@ export function validateProject(p) {
   if (!finite(p.ambient, 0, 4)) fail();
   for (const l of p.lights) {
     for (const key of ["x", "z", "tx", "tz"])
-      if (!finite(l[key], -360, 360)) fail();
-    for (const key of ["y", "ty"]) if (!finite(l[key], 0, 160)) fail();
+      if (!finite(l[key], -600, 600)) fail();
+    for (const key of ["y", "ty"]) if (!finite(l[key], 0, 240)) fail();
     if (!finite(l.power, 0, 300) || !finite(l.kelvin, 2700, 6500)) fail();
     // Hidden rather than deleted. Absent means shown, which is what every
     // light in every older backup means.

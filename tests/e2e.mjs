@@ -42,7 +42,7 @@ try {
   });
   let page = await context.newPage();
   page.on("pageerror", (err) => errors.push(err.message));
-  await page.goto("http://127.0.0.1:5183");
+  await page.goto("http://127.0.0.1:5183/?fixture=booth");
   await page.waitForFunction(() => !!window.__booth?.scene);
   await page.waitForTimeout(800);
   assert.equal(await page.locator(".library .art-card").count(), 6);
@@ -338,20 +338,6 @@ try {
   );
   pass("Duplicate and remove work");
   await page.locator('[data-tab="layout"]').click();
-  await page.getByLabel("Booth preset").selectOption("240");
-  await page.getByText("White canopy & frame", { exact: true }).click();
-  assert.equal(
-    await page.evaluate(() => window.__booth.project.booth.width),
-    240,
-  );
-  assert.equal(
-    await page.evaluate(() => window.__booth.project.booth.tent),
-    true,
-  );
-  await page.getByText("White canopy & frame", { exact: true }).click();
-  await page.getByLabel("Booth preset").selectOption("120");
-  await page.locator('[data-action="reset-view"]').click();
-  pass("Booth presets and canopy configure actual geometry");
   await page.locator('[data-tab="export"]').click();
   const dlPromise = page.waitForEvent("download");
   await page.locator('[data-action="export-image"]').click();
@@ -502,7 +488,7 @@ try {
   });
   page = await context.newPage();
   page.on("pageerror", (err) => errors.push(err.message));
-  await page.goto("http://127.0.0.1:5183");
+  await page.goto("http://127.0.0.1:5183/?fixture=booth");
   await page.waitForFunction(() => !!window.__booth);
   assert.equal(
     await page.evaluate(() => JSON.stringify(window.__booth.project)),

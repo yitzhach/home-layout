@@ -18,7 +18,7 @@ try {
   const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5216');
+  await page.goto('http://127.0.0.1:5216/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   const before = await page.evaluate(() => JSON.stringify(window.__booth.project));
 
@@ -67,7 +67,7 @@ try {
 
   // A tool in another tab, by a word of its section.
   await page.keyboard.press('Control+k');
-  await page.keyboard.type('show pack');
+  await page.keyboard.type('installation guide');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(100);
   assert.ok(await page.locator('.inspector-tabs [data-tab="export"].active').count(), 'Export opened');

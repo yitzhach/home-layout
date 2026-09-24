@@ -31,6 +31,7 @@ import { DEFAULT_FRAME, frameSize } from "./framing.js";
 import { AUTO_QUALITY, FrameBudget, startScale, stepDown } from "./adaptive.js";
 import { distanceInches, formatLength, planDimensions } from "./measure.js";
 import { buildFurniture } from "./furniture.js";
+import { findRoomWall, isRoomKey, wallOpenings, wallPieces } from "./rooms.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
 const WALL_SLAB_OFFSET = 0.031;
@@ -1042,6 +1043,102 @@ export class BoothScene {
     if (!force && this.loading > 0 && performance.now() - this.retiredAt < RETIRE_MAX_MS) return;
     this.retired.splice(0).forEach(disposeTree);
   }
+  /**
+   * One wall of a room: the solid rectangles left once its doors, windows and
+   * archways are cut out, each a slab in the wall's own frame, then what fills
+   * the holes — a door leaf standing open at its angle, a pane of glass with
+   * a sill, nothing for an archway — and, in Plan view, each door's swing.
+   *
+   * Every slab is a wall object carrying the wall's key, so picking, dropping
+   * a work on it and the exterior frame all work as they do for a panel; the
+   * holes are simply not there to be hit.
+   */
+  buildRoomWall(p, key, spec, g, width, height, rough) {
+    const openings = wallOpenings(p, spec),
+      wallMat = rough(p.booth.color),
+      trim = rough("#f7f5f0"),
+      t = 0.055;
+    for (const r of wallPieces(spec.width, spec.height, openings)) {
+      const mesh = this.box(r.w * IN, r.h * IN, t, (r.x + r.w / 2) * IN, (r.y + r.h / 2) * IN, -WALL_SLAB_OFFSET, wallMat, g);
+      mesh.userData.wall = key;
+      this.wallObjects.push(mesh);
+    }
+    // A skirting board along both faces, broken at each door and archway.
+    const floorCuts = openings.filter((o) => o.kind !== "window");
+    for (const r of wallPieces(spec.width, 4, floorCuts.map((o) => ({ ...o, sill: 0, height: 4 }))))
+      for (const side of [1, -1])
+        this.box(r.w * IN, 4 * IN, 0.012, (r.x + r.w / 2) * IN, 2 * IN, -WALL_SLAB_OFFSET + side * (t / 2 + 0.006), trim, g);
+    const exterior = new T.Group();
+    exterior.position.set(width, 0, -0.063);
+    exterior.rotation.y = Math.PI;
+    g.add(exterior);
+    this.frames[key + "-outside"] = exterior;
+    for (const o of openings) {
+      const x0 = o.x * IN,
+        w = o.width * IN,
+        y0 = o.sill * IN,
+        h = o.height * IN,
+        z = -WALL_SLAB_OFFSET;
+      // Casing round the opening, on both faces.
+      for (const side of [1, -1]) {
+        const zf = z + side * (t / 2 + 0.008);
+        this.box(0.07, h, 0.016, x0 - 0.035, y0 + h / 2, zf, trim, g);
+        this.box(0.07, h, 0.016, x0 + w + 0.035, y0 + h / 2, zf, trim, g);
+        if (y0 + h < height - 0.02) this.box(w + 0.14, 0.07, 0.016, x0 + w / 2, y0 + h + 0.035, zf, trim, g);
+      }
+      if (o.kind === "window") {
+        const glass = new T.Mesh(
+          new T.BoxGeometry(w, h, 0.006),
+          new T.MeshPhysicalMaterial({ color: "#dfeef5", roughness: 0.05, transmission: 0.9, transparent: true, opacity: 0.28, thickness: 0.01 }),
+        );
+        glass.position.set(x0 + w / 2, y0 + h / 2, z);
+        glass.castShadow = false;
+        g.add(glass);
+        // A mullion down the middle of a wide window, and the sill.
+        if (o.width > 30) this.box(0.035, h, 0.03, x0 + w / 2, y0 + h / 2, z, trim, g);
+        this.box(w + 0.16, 0.03, t + 0.06, x0 + w / 2, y0 - 0.015, z + 0.03, trim, g);
+      }
+      if (o.kind === "door") {
+        // The leaf, hinged at one jamb and swung `angle` degrees toward the
+        // face it opens into. Hinge on the left: it pivots at x0.
+        const hinge = new T.Group(),
+          hx = o.hingeLeft ? x0 : x0 + w;
+        hinge.position.set(hx, 0, z + o.into * (t / 2));
+        const turn = (o.angle * Math.PI) / 180;
+        hinge.rotation.y = (o.hingeLeft ? -1 : 1) * o.into * turn;
+        g.add(hinge);
+        const leaf = this.box(w - 0.01, h - 0.01, 0.04, (o.hingeLeft ? 1 : -1) * (w / 2), h / 2, o.into * 0.02, rough("#f3f1ec"), hinge);
+        leaf.userData.tag = "doors";
+        this.box(0.02, 0.02, 0.07, (o.hingeLeft ? 1 : -1) * (w - 0.08), 0.95, o.into * 0.02, rough("#8a8680"), hinge);
+        // The swing, drawn on the floor for Plan view and never exported.
+        const pts = [];
+        for (let i = 0; i <= 24; i++) {
+          const a = (i / 24) * turn * (o.hingeLeft ? -1 : 1) * o.into;
+          const dx = (o.hingeLeft ? 1 : -1) * w;
+          pts.push(new T.Vector3(hx + dx * Math.cos(a), 0.004, z + o.into * (t / 2) - dx * Math.sin(a)));
+        }
+        const arc = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: "#7c8894" }));
+        arc.userData.editorOnly = true;
+        g.add(arc);
+      }
+    }
+  }
+  /**
+   * Each room's own floor, a thin slab over the ground, so the house reads as
+   * rooms standing on a lot rather than walls on an endless floor. A plain
+   * oak colour until rooms carry their own finishes.
+   */
+  buildRoomFloors(p) {
+    const mat = new T.MeshStandardMaterial({ color: "#b48a5e", roughness: 0.7 });
+    for (const r of p.booth.rooms || []) {
+      const floor = new T.Mesh(new T.BoxGeometry(r.width * IN, 0.004, r.depth * IN), mat);
+      floor.position.set(r.x * IN, 0.002, r.z * IN);
+      floor.receiveShadow = true;
+      floor.name = "room-floor:" + r.id;
+      floor.userData.room = r.id;
+      this.group.add(floor);
+    }
+  }
   box(w, h, d, x, y, z, mat, parent = this.group) {
     const o = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
     o.position.set(x, y, z);
@@ -1062,7 +1159,7 @@ export class BoothScene {
       W = p.width * IN,
       D = p.depth * IN;
     const g = new T.Group();
-    const panel = findPanel(this.p, wall);
+    const panel = findPanel(this.p, wall) || findRoomWall(this.p, wall);
     if (panel) return placePanelFrame(g, panel);
     if (wall === "back") g.position.set(-W / 2, 0, -D / 2);
     if (wall === "left") {
@@ -1220,10 +1317,15 @@ export class BoothScene {
     fill.position.set(-3, 6, 5);
     fill.castShadow = true;
     fill.shadow.mapSize.set(1024, 1024);
-    fill.shadow.camera.left = -5;
-    fill.shadow.camera.right = 5;
-    fill.shadow.camera.top = 5;
-    fill.shadow.camera.bottom = -5;
+    // Big enough to cover the whole floor: outside its box the shadow map
+    // reads as shade, which put the far rooms of a house in the dark.
+    const reach = Math.max(5, Math.max(W, D) * 0.75 + 1);
+    fill.shadow.camera.left = -reach;
+    fill.shadow.camera.right = reach;
+    fill.shadow.camera.top = reach;
+    fill.shadow.camera.bottom = -reach;
+    fill.shadow.camera.far = Math.max(50, reach * 4);
+    if (reach > 5) fill.shadow.mapSize.set(2048, 2048);
     fill.shadow.normalBias = 0.015;
     this.group.add(fill);
     const wallConsumers = new Set();
@@ -1236,6 +1338,10 @@ export class BoothScene {
         width = config.width * IN,
         height = config.height * IN;
       if (!config.enabled) continue;
+      if (config.room) {
+        this.buildRoomWall(p, wall, config.room, g, width, height, rough);
+        continue;
+      }
       const wallMesh = this.box(
         width,
         height,
@@ -1463,9 +1569,10 @@ export class BoothScene {
     }
     // The pop-up's front header rail. An art-show booth has no canopy frame
     // to carry one; it gets the light bar below instead.
-    if (!isArtShow(p))
+    if (!isArtShow(p) && !p.booth.rooms?.length)
       this.box(W, 0.025, 0.025, 0, H - 0.025, D * 0.2, rough("#2e3032"));
     this.buildLightBar(p, rough);
+    this.buildRoomFloors(p);
     this.buildPedestals(p);
     // Figures for scale. They are part of the picture, not of the booth: the
     // hanging guide ignores them and nothing can be hung on one.
@@ -1888,8 +1995,16 @@ export class BoothScene {
     this.camera.up.set(0, 1, 0);
     if (perspective) {
       this.fitAspectFactor = 1;
-      this.camera.position.set(0.25, H * 1.1, D / 2 + Math.max(W, D) * 1.85);
-      this.controls.target.set(0, H * 0.62, -D * 0.2);
+      if (this.p.booth.rooms?.length) {
+        // A house is looked into from above, like a doll's house with the
+        // roof off: high enough to see into every room over its walls.
+        const span = Math.max(W, D);
+        this.camera.position.set(0.25, span * 0.72, D / 2 + span * 0.28);
+        this.controls.target.set(0, 0, 0);
+      } else {
+        this.camera.position.set(0.25, H * 1.1, D / 2 + Math.max(W, D) * 1.85);
+        this.controls.target.set(0, H * 0.62, -D * 0.2);
+      }
     } else if (view === "plan") {
       this.camera.position.set(0, 12, 0);
       this.camera.up.set(0, 0, -1);

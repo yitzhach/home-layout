@@ -19,7 +19,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5212');
+  await page.goto('http://127.0.0.1:5212/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   await page.click('[data-tab="walls"]');
   const kinds = await page.evaluate(() => [...document.querySelectorAll('#furniture-kind option')].map((o) => o.value));

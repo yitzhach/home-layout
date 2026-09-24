@@ -15,7 +15,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5200');
+  await page.goto('http://127.0.0.1:5200/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   const pose = () => page.evaluate(() => window.__booth.scene.pose());
   const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-3);

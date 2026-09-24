@@ -33,7 +33,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5196');
+  await page.goto('http://127.0.0.1:5196/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   // Free-standing walls moved out of Layout into the Walls tool when the
   // art-show booth arrived; the controls themselves are unchanged.

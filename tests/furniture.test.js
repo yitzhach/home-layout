@@ -3,7 +3,7 @@
 // before kinds existed is still a pedestal.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FURNITURE, MAX_PEDESTALS, PEDESTAL, blankProject, furnitureKind, validateProject } from "../src/model.js";
+import { FURNITURE, MAX_PEDESTALS, PEDESTAL, blankProject, furnitureKind, furnitureLimits, validateProject } from "../src/model.js";
 
 const piece = (kind, extra = {}) => {
   const { label, ...size } = FURNITURE[kind];
@@ -40,9 +40,12 @@ test("sizes are the ones a show supplies", () => {
   assert.equal(FURNITURE.table6.height, 30);
   assert.equal(FURNITURE.table6.depth, 30);
   for (const [k, f] of Object.entries(FURNITURE)) {
-    assert.ok(f.width >= 4 && f.width <= 96, `${k} width fits the schema`);
-    assert.ok(f.depth >= 4 && f.depth <= 96, `${k} depth fits the schema`);
-    assert.ok(f.height >= 6 && f.height <= 96, `${k} height fits the schema`);
+    // Each kind within its own limits; every kind but the box and the stairs
+    // shares the furniture limits the schema has always had.
+    const lim = furnitureLimits(k);
+    for (const d of ["width", "depth", "height"])
+      assert.ok(f[d] >= lim[d][0] && f[d] <= lim[d][1], `${k} ${d} fits the schema`);
+    if (k !== "box" && k !== "stairs") assert.deepEqual(lim, { width: [4, 96], depth: [4, 96], height: [6, 96] });
     assert.match(f.color, /^#[0-9a-f]{6}$/i);
   }
 });

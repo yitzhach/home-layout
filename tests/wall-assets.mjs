@@ -8,7 +8,7 @@ const browser=await chromium.launch({headless:true,...(process.env.BOOTH_TEST_CH
 try {
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5187');await page.waitForFunction(()=>!!window.__booth?.scene);
+ await page.goto('http://127.0.0.1:5187/?fixture=booth');await page.waitForFunction(()=>!!window.__booth?.scene);
  await page.locator('[data-tab="layout"]').click();
  await page.getByLabel('Surround with other booths').check();
  await page.getByLabel('Booth position').selectOption('corner-left');

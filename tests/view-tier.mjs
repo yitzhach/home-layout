@@ -21,7 +21,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5198');
+  await page.goto('http://127.0.0.1:5198/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
 
   assert.equal(await page.evaluate(() => window.__booth.tier), 'pro', 'a new browser is Pro');
@@ -34,8 +34,8 @@ try {
   await page.selectOption('select[data-tier]', 'lite');
   assert.equal(await page.evaluate(() => window.__booth.tier), 'lite');
   assert.equal(await page.evaluate(() => localStorage.getItem('booth.tier')), 'lite', 'remembered per browser');
-  assert.equal(await page.locator('[data-pro-lock="row"]').count(), 1, 'the booth row is locked in Lite');
-  assert.equal(await page.locator('[data-action="row-booth-left"]').count(), 0, 'and its controls are not drawn');
+  assert.equal(await page.locator('[data-pro-lock="underlay"]').count(), 1, 'the floor plan underlay is locked in Lite');
+  assert.equal(await page.locator('[data-action="upload-underlay"]').count(), 0, 'and its controls are not drawn');
   assert.equal(await page.locator('[data-action="save-template"]').count(), 0, 'templates are Pro');
 
   await page.click('[data-tab="export"]');
@@ -68,7 +68,7 @@ try {
   await page.waitForTimeout(400);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   assert.ok(overflow <= 0, `no sideways scroll on a phone (${overflow}px over)`);
-  for (const t of ['art', 'layout', 'show', 'walls', 'lighting', 'video', 'export']) {
+  for (const t of ['art', 'rooms', 'layout', 'walls', 'lighting', 'video', 'export']) {
     const tabButton = page.locator(`[data-tab="${t}"]`);
     await tabButton.scrollIntoViewIfNeeded();
     await tabButton.click();

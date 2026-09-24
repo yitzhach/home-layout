@@ -17,7 +17,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5201');
+  await page.goto('http://127.0.0.1:5201/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   await page.click('[data-tab="layout"]');
 

@@ -20,7 +20,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5199');
+  await page.goto('http://127.0.0.1:5199/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
 
   // Two works on the back wall, nothing else, seen straight on.

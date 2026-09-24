@@ -63,6 +63,23 @@ export function buildFurniture(kind, ped, g, box) {
         add(box(leg, seat - 0.03, leg, (sx * (w - leg)) / 2, (seat - 0.03) / 2, (sz * (d - leg)) / 2, metal, g));
     // The back, at the rear edge (−Z is the back of the chair).
     add(box(w, h - seat, 0.025, 0, seat + (h - seat) / 2, -d / 2 + 0.0125, frame, g));
+  } else if (kind === "stairs") {
+    // Treads and risers as solid steps, each one riser taller than the last,
+    // climbing toward −Z; two stringers down the sides.
+    const tread = mat(color, 0.65),
+      steps = Math.max(2, Math.round(h / (7.75 * IN))),
+      rise = h / steps,
+      run = d / steps;
+    for (let i = 0; i < steps; i++) {
+      const top = rise * (i + 1);
+      add(box(w, top, run, 0, top / 2, d / 2 - run * (i + 0.5), tread, g));
+    }
+    const rail = mat("#f3f1ec", 0.6);
+    for (const sx of [-1, 1]) {
+      const len = Math.hypot(d, h);
+      const stringer = add(box(0.03, 0.035, len, (sx * (w - 0.03)) / 2, h / 2 - 0.02, 0, rail, g));
+      stringer.rotation.x = Math.atan2(h, d);
+    }
   } else if (kind === "stool") {
     const r = Math.min(w, d) / 2;
     const top = new T.Mesh(new T.CylinderGeometry(r, r, 0.04, 20), mat(color, 0.6));

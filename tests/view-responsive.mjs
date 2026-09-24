@@ -25,7 +25,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
-  await page.goto('http://127.0.0.1:5198');
+  await page.goto('http://127.0.0.1:5198/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
   await page.waitForTimeout(400);
 
@@ -91,112 +91,8 @@ try {
   assert.equal(await up.count(), 1);
   assert.ok(Number(await up.getAttribute('max')) <= 144, 'the travel is the wall, not 360 inches');
 
-  // ---- An art-show booth in a photographed environment ------------------
-  await page.click('[data-tab="show"]');
-  await page.getByLabel('Venue').selectOption('artshow');
-  await page.waitForTimeout(700);
-  assert.ok(await page.evaluate(() => !!window.__booth.scene.group.getObjectByName('exhibition-hall')),
-    'an art-show booth opens in its own hall');
-
-  await page.click('[data-tab="layout"]');
-
-  // Trade show is a white exhibition hall and shows no photograph, so an
-  // art-show booth in it keeps its own hall: these are the same room. It used
-  // to carry the burnt-warehouse HDRI, which put brick and girders behind
-  // seamless white walls and then switched the hall off on top of that.
-  await page.selectOption('select[aria-label="Environment"]', 'tradeshow');
-  await page.waitForTimeout(700);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.hall.on), true,
-    'trade show is a hall, not a photograph, so the hall stays');
-  assert.ok(await page.evaluate(() => !!window.__booth.scene.group.getObjectByName('exhibition-hall')),
-    'and its white walls are still standing');
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.ground), 'studio',
-    'on the texture-free neutral floor, not a concrete photograph');
-
-  // The warehouse is where the photograph went, and there the hall does come
-  // off: its back wall would cut across the picture as a white band.
-  await page.selectOption('select[aria-label="Environment"]', 'warehouse');
-  await page.waitForTimeout(700);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.hall.on), false,
-    'choosing a photographed environment switches the hall off');
-  assert.equal(await page.evaluate(() => !!window.__booth.scene.group.getObjectByName('exhibition-hall')), false,
-    'and its white walls are out of the frame');
-  // The booth itself is untouched: this is the room, not the booth.
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.venue), 'artshow');
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.on), true,
-    'the light bar is still overhead');
-  assert.ok(await page.evaluate(() => !!window.__booth.scene.group.getObjectByName('light-bar')));
-
-  // And it comes back from the Layout panel, where the environment was chosen.
-  const hallToggle = page.locator('input[data-scope="hall"][data-field="on"]').first();
-  assert.equal(await hallToggle.count(), 1, 'the hall is switchable where the environment is');
-  await hallToggle.check();
-  await page.waitForTimeout(600);
-  assert.ok(await page.evaluate(() => !!window.__booth.scene.group.getObjectByName('exhibition-hall')),
-    'the hall comes back on request');
-
-  // ---- The light bar is adjustable from Lighting ------------------------
-  await page.click('[data-tab="lighting"]');
-  const diffusion = page.locator('input[data-scope="lightBar"][data-field="diffusion"]');
-  const power = page.locator('input[data-scope="lightBar"][data-field="power"]');
-  assert.equal(await diffusion.count(), 1, 'diffusion is in the Lighting tool too');
-  assert.equal(await power.count(), 1, 'and so is the bar\'s brightness');
-
-  // The two ranges, both reported from a real monitor: 70 was called "beyond
-  // bright", 60 was still much too hot, and the old maximum diffusion of 1 was
-  // still harsh. Brightness is now a percentage of a bar judged to read right,
-  // so the slider is 0..100 and the middle of it is the default.
-  assert.equal(await power.getAttribute('max'), '100', 'brightness is a percentage, not a stored unit');
-  assert.equal(await power.getAttribute('step'), '1', 'and moves in steps small enough to judge');
-  assert.equal(await power.inputValue(), '50', 'and a fresh booth opens in the middle of it');
-  assert.equal(await diffusion.getAttribute('max'), '3', 'diffusion reaches past the old ceiling of 1');
-
-  // The stored unit underneath is the light's own power and never the slider
-  // point: 50 on the slider is 8 stored units, which is what the renderer
-  // reads. Get this backwards and a booth opens 6x too bright.
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.power), 8);
-  await power.fill('64');
-  await power.dispatchEvent('change');
-  await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.power), 64 * 0.16);
-  await power.fill('50');
-  await power.dispatchEvent('change');
-  await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.power), 8);
-
-  // Past the old ceiling, and it sticks: this is the value that could not be
-  // reached at all before.
-  await diffusion.fill('2.5');
-  await diffusion.dispatchEvent('change');
-  await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.diffusion), 2.5);
-  await diffusion.fill('0');
-  await diffusion.dispatchEvent('change');
-  await page.waitForTimeout(500);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.diffusion), 0);
-
-  // A booth saved brighter than the slider offers widens its own slider rather
-  // than being quietly dragged down the moment the panel is drawn. This is the
-  // schema-1 case: 0..300 is still a project and must still be editable.
-  await page.evaluate(() => { window.__booth.project.booth.lightBar.power = 150; });
-  // Leaving the tab and coming back is what redraws the inspector, which is
-  // the moment a slider would clamp a value it thinks is out of range.
-  await page.click('[data-tab="art"]');
-  await page.click('[data-tab="lighting"]');
-  await page.waitForTimeout(400);
-  assert.equal(await page.locator('input[data-scope="lightBar"][data-field="power"]').getAttribute('max'), String(Math.ceil(150 / 0.16)),
-    'an older, brighter bar keeps its value and widens its slider');
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.power), 150,
-    'and is not clamped by being looked at');
-  // And it says so, with the one drag back rather than a number to work out.
-  assert.equal(await page.locator('[data-action="bar-default"]').count(), 1,
-    'a bar stored above the scale offers the way back to the default');
-  await page.click('[data-action="bar-default"]');
-  await page.waitForTimeout(400);
-  assert.equal(await page.evaluate(() => window.__booth.project.booth.lightBar.power), 8,
-    'which sets the stored unit, not the slider point');
-  assert.equal(await page.locator('input[data-scope="lightBar"][data-field="power"]').getAttribute('max'), '100',
-    'and the slider goes back to the scale it belongs on');
+  // (The art-show booth and its light bar were cut from Home Layout; their
+  // sections of this suite went with them.)
 
   // ---- Drawing on demand, and auto preview quality ----------------------
   // An untouched booth draws nothing: the same picture sixty times a second

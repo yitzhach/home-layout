@@ -53,7 +53,7 @@ try {
   const errors = [], warnings = [];
   page.on('pageerror', (e) => errors.push(e.stack || e.message));
   page.on('console', (m) => { if (m.type() === 'warning' || m.type() === 'error') warnings.push(m.text()); });
-  await page.goto('http://127.0.0.1:5191');
+  await page.goto('http://127.0.0.1:5191/?fixture=booth');
   await page.waitForFunction(() => !!window.__booth?.scene);
 
   // The asset files have to be reachable at the paths the presets name, or
