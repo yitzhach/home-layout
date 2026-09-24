@@ -1,0 +1,16 @@
+{
+  "backgroundIntensity": 2.6,
+  "source": "park_parking_1k.hdr",
+  "credit": "Park Parking (Poly Haven)",
+  "license": "CC0",
+  "light": {
+    "width": 1024,
+    "height": 512
+  },
+  "background": {
+    "width": 1024,
+    "height": 512,
+    "quality": 88
+  },
+  "generated": "2026-09-17T13:19:29.188Z"
+}

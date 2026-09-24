@@ -1,0 +1,14 @@
+{
+  "tileMetres": 2,
+  "files": {
+    "map": "color.jpg",
+    "normalMap": "normal.jpg",
+    "roughnessMap": "rough.jpg",
+    "aoMap": "ao.jpg"
+  },
+  "normalMap": "GL",
+  "credit": "Asphalt026C (ambientCG)",
+  "license": "CC0",
+  "source": "Asphalt026C_1K-JPG",
+  "generated": "2026-09-17T13:25:50.626Z"
+}

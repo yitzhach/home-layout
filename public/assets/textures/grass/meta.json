@@ -1,0 +1,14 @@
+{
+  "tileMetres": 2,
+  "files": {
+    "map": "color.jpg",
+    "normalMap": "normal.jpg",
+    "roughnessMap": "rough.jpg",
+    "aoMap": "ao.jpg"
+  },
+  "normalMap": "GL",
+  "credit": "Grass003 (ambientCG)",
+  "license": "CC0",
+  "source": "Grass003_1K-JPG",
+  "generated": "2026-09-17T13:25:50.687Z"
+}

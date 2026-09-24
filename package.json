@@ -1,0 +1,26 @@
+{
+  "name": "home-layout",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.js",
+    "deploy": "npm run build && wrangler deploy",
+    "test:browser": "node tests/e2e.mjs",
+    "test:view": "node tests/view-city.mjs && node tests/view-lighting.mjs && node tests/view-hdri.mjs && node tests/view-textures.mjs && node tests/view-ground-library.mjs && node tests/view-video.mjs && node tests/view-timeline.mjs && node tests/view-people.mjs && node tests/view-panels.mjs && node tests/view-responsive.mjs && node tests/view-artshow.mjs && node tests/view-row.mjs && node tests/view-finish.mjs && node tests/view-measure.mjs && node tests/view-furniture.mjs && node tests/view-arrange.mjs && node tests/view-quickstart.mjs && node tests/view-showpack.mjs && node tests/view-toolsearch.mjs && node tests/view-tier.mjs && node tests/view-guides.mjs && node tests/view-views.mjs && node tests/view-plan.mjs && node tests/view-box.mjs && node tests/view-hall.mjs"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.3.0",
+    "lucide": "^0.468.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "jpeg-js": "^0.4.4",
+    "vite": "^6.3.5",
+    "wrangler": "^4.0.0"
+  }
+}

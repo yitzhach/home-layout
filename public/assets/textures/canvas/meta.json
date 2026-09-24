@@ -1,0 +1,14 @@
+{
+  "tileMetres": 0.5,
+  "files": {
+    "map": "color.jpg",
+    "normalMap": "normal.jpg",
+    "roughnessMap": "rough.jpg",
+    "aoMap": "ao.jpg"
+  },
+  "normalMap": "GL",
+  "credit": "Fabric081C (ambientCG)",
+  "license": "CC0",
+  "source": "Fabric081C_1K-JPG",
+  "generated": "2026-09-18T02:14:56.201Z"
+}
