@@ -31,6 +31,8 @@ import { DEFAULT_FRAME, frameSize } from "./framing.js";
 import { AUTO_QUALITY, FrameBudget, startScale, stepDown } from "./adaptive.js";
 import { distanceInches, formatLength, planDimensions } from "./measure.js";
 import { buildFurniture } from "./furniture.js";
+import { FLOOR_FINISHES, ceilingColor, floorColor, floorFinish, roomFinish, wallFaces } from "./finishes.js";
+import { floorPhoto, floorTexture } from "./finish-textures.js";
 import { findRoomWall, isRoomKey, wallOpenings, wallPieces } from "./rooms.js";
 // How far behind its frame plane a wall's slab sits, in metres. Half the
 // slab's thickness plus the sliver that keeps art from z-fighting the face.
@@ -1055,7 +1057,12 @@ export class BoothScene {
    */
   buildRoomWall(p, key, spec, g, width, height, rough) {
     const openings = wallOpenings(p, spec),
-      wallMat = rough(p.booth.color),
+      faces = wallFaces(p, spec),
+      front = rough(faces.front),
+      back = faces.back === faces.front ? front : rough(faces.back),
+      // BoxGeometry's groups: ±x, ±y, then +z (the front, into the owning
+      // room) and −z (the back). The edges take the front's paint.
+      wallMat = [front, front, front, front, front, back],
       trim = rough("#f7f5f0"),
       t = 0.055;
     for (const r of wallPieces(spec.width, spec.height, openings)) {
@@ -1124,19 +1131,54 @@ export class BoothScene {
     }
   }
   /**
-   * Each room's own floor, a thin slab over the ground, so the house reads as
-   * rooms standing on a lot rather than walls on an endless floor. A plain
-   * oak colour until rooms carry their own finishes.
+   * Each room's own floor, a thin slab over the ground in the room's floor
+   * finish, so the house reads as rooms standing on a lot rather than walls
+   * on an endless floor; and its ceiling, a plane that faces down only.
+   *
+   * The ceiling is single-sided on purpose: seen from above — the doll's
+   * house view — it is culled and the room stays open to look into, while
+   * from inside the room, at eye height, it is there. It casts no shadow, or
+   * the one light over the house would leave every room in the dark.
    */
   buildRoomFloors(p) {
-    const mat = new T.MeshStandardMaterial({ color: "#b48a5e", roughness: 0.7 });
+    const rev = this.revision;
     for (const r of p.booth.rooms || []) {
+      const id = floorFinish(r),
+        spec = FLOOR_FINISHES[id],
+        tile = spec.tile * IN,
+        map = floorTexture(id, floorColor(r)).clone();
+      map.repeat.set((r.width * IN) / tile, (r.depth * IN) / tile);
+      map.needsUpdate = true;
+      const mat = new T.MeshStandardMaterial({ map, roughness: spec.roughness });
+      mat.userData.ownedMap = true;
       const floor = new T.Mesh(new T.BoxGeometry(r.width * IN, 0.004, r.depth * IN), mat);
       floor.position.set(r.x * IN, 0.002, r.z * IN);
       floor.receiveShadow = true;
       floor.name = "room-floor:" + r.id;
       floor.userData.room = r.id;
+      floor.userData.finish = id;
       this.group.add(floor);
+      // A photograph of the material, when the owner has supplied one,
+      // replaces the pattern; tinted by the floor colour only when one is set.
+      floorPhoto(id).then((photo) => {
+        if (!photo || this.revision !== rev || !floor.parent) return;
+        const m = photo.clone();
+        m.repeat.copy(map.repeat);
+        m.needsUpdate = true;
+        mat.map = m;
+        mat.color.set(roomFinish(r).floorColor || "#ffffff");
+        mat.needsUpdate = true;
+      });
+      const ceiling = new T.Mesh(
+        new T.PlaneGeometry(r.width * IN, r.depth * IN),
+        new T.MeshStandardMaterial({ color: ceilingColor(r), roughness: 0.95 }),
+      );
+      ceiling.rotation.x = Math.PI / 2;
+      ceiling.position.set(r.x * IN, r.height * IN - 0.002, r.z * IN);
+      ceiling.name = "room-ceiling:" + r.id;
+      ceiling.userData.room = r.id;
+      ceiling.receiveShadow = true;
+      this.group.add(ceiling);
     }
   }
   box(w, h, d, x, y, z, mat, parent = this.group) {

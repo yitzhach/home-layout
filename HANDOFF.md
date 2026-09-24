@@ -12,9 +12,10 @@ app learned — its rules, its tests, its hard-won bugs — is in
 
 - Repo: https://github.com/yitzhach/home-layout. `main` is production through
   Cloudflare's Git integration (Worker `home-layout`); merging is deploying.
-- **State: phase 1 is built — the house.** A first visit opens a starter
-  floor (living room, kitchen, bedroom, bathroom) seen from above like a
-  doll's house. The details are the next section.
+- **State: phases 1 and 2 are built — the house, its furniture and its
+  finishes.** A first visit opens a starter floor (living room, kitchen,
+  bedroom, bathroom) seen from above like a doll's house, each room floored
+  as its kind usually is. The details are the next two sections.
 - `wrangler.jsonc` carries `build.command: "npm run build"`: Cloudflare's Git
   integration runs only `npx wrangler deploy`, and without it the first deploy
   failed for want of `dist/`.
@@ -82,6 +83,55 @@ app learned — its rules, its tests, its hard-won bugs — is in
   view does); many strings still say "booth" (library "Booth assets", Photo
   mode's "booth photo").
 
+## Phase 2 — furniture and finishes
+
+- **Finishes are `room.finish`**, optional, and every part of it optional:
+  `{ walls, sides: { n|e|s|w }, floor, floorColor, ceiling }`. `src/finishes.js`
+  is all of it and is pure; `validFinish` is its validator, called from
+  `validateProject` next to `validRooms` (not from rooms.js, which finishes.js
+  imports). A room with no finish draws exactly as phase 1 did. `setFinish`
+  is the one writer: clearing a part deletes it, and a finish back at every
+  default disappears, so undo and backups never carry empty records.
+- **Walls are paint.** A room colour, and a colour of its own for any side
+  (the feature wall; "Same as the room" clears it). A derived wall is one slab
+  with two faces: `wallFaces(p, wall)` paints the front (+Z, into the owning
+  room) from the owner and the back from `roomBehind` — the room whose
+  opposite side lies on the same line over the wall's midpoint — or the
+  house's `booth.color` when it is an outside face. `scene.buildRoomWall`
+  gives each slab a six-material array (BoxGeometry's groups: ±x, ±y, +z, −z).
+  `booth.color` is now "the house's wall colour": outside faces and every room
+  without paint of its own.
+- **Floors are a material** from `FLOOR_FINISHES` (oak, light oak, walnut,
+  herringbone, 12″ tile, mosaic, checkerboard, marble, slate, concrete,
+  carpet, vinyl), each with a real repeat size in inches and a roughness, and
+  an optional `floorColor` tint. A new room of a kind in `TYPE_FLOORS` starts
+  in that floor (kitchen tile, bath mosaic, bedroom carpet, laundry vinyl);
+  choosing a material drops the tint. `src/finish-textures.js` draws each as a
+  small canvas pattern, cached per material and colour, cloned per floor for
+  its repeat. **Owner-supplied photographs** go at
+  `public/assets/materials/<id>/color.jpg` (the finish ids above); one HEAD
+  request per material per session decides, and with the folder empty the
+  pattern is what is drawn.
+- **Ceilings** are a plane per room at its height, facing down and
+  single-sided, casting no shadow: culled from the doll's-house view above,
+  there from eye height and in Walk. `ceiling` colour, default `#f7f6f2`.
+- **Furniture:** twelve home kinds in `FURNITURE` — bed, sofa, armchair,
+  dining table, coffee table, desk, kitchen base and wall cabinets, bookshelf,
+  dresser, nightstand, rug — each with its own `limits`, all facing +Z with
+  their backs at −Z. Shapes in `src/furniture.js`. The picker groups them
+  (`FURNITURE_GROUPS` in main.js), home pieces first; the booth kinds are
+  still listed under Display. A new piece lands in the middle of the room
+  open in the Rooms tab. `MAX_PEDESTALS` went from 24 to 80.
+- **Tier:** nothing here is gated. Paint, floor materials and the furniture
+  set are Lite in the proposed split; uploaded textures (Pro) are not built.
+- **Tests:** `tests/finishes.test.js` and `tests/view-finishes.mjs`;
+  `view-furniture` now adds and measures all 24 kinds.
+- **Rough edges:** no user-uploaded wall or floor textures yet; tile, counter
+  and cabinet surfaces are colours rather than materials (the cabinet's
+  counter top is a fixed stone grey); the rug sits on the room floor but
+  furniture does not know which room it is in; patterns are unjudged by eye —
+  no session can look at a render.
+
 ## What the owner decided (2026-09-24)
 
 - **Scope:** one whole floor of connected rooms per project. More storeys
@@ -119,7 +169,9 @@ app learned — its rules, its tests, its hard-won bugs — is in
 ## Next — the phases, each deployable
 
 1. ~~Strip the cut features; rooms; doors, windows, archways, stairs.~~ Done.
-2. Furniture set and materials per wall, floor and ceiling.
+2. ~~Furniture set and materials per wall, floor and ceiling.~~ Done; the
+   owner should look at the floor patterns and furniture on the live site,
+   and supply photographs under `public/assets/materials/<id>/color.jpg`.
 3. Wall photo, manual four-corner straightening.
 4. Fixtures and daylight.
 5. The AI Worker: wall mapping and material help.

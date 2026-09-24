@@ -1,4 +1,5 @@
 import { validViews } from "./views.js";
+import { starterFinish, validFinish } from "./finishes.js";
 import { findRoomWall, homeRooms, wallOpenings, houseExtent, isRoomKey, roomWallLabel, roomWalls, starterRooms, validRooms } from "./rooms.js";
 import { editedAspect, validImageEdits } from "./image-edit.js";
 import { SHADOW_FIELD, SHADOW_MAX, shadowSpec } from "./dropshadow.js";
@@ -173,7 +174,7 @@ export function homeProject() {
   const p = blankProject();
   const b = p.booth;
   p.name = "My home";
-  b.rooms = starterRooms();
+  b.rooms = starterRooms().map((r) => (starterFinish(r.type) ? { ...r, finish: starterFinish(r.type) } : r));
   Object.assign(b, houseExtent(b.rooms));
   b.height = 96;
   b.color = "#eeebe4";
@@ -388,7 +389,9 @@ export const isShown = (item) => item?.hidden !== true;
 export const PEDESTAL_PREFIX = "pedestal:";
 // Raised from 8 when furniture joined the list: a 10 × 20 with two tables,
 // chairs, a bin and a banner is a dozen things before a single pedestal.
-export const MAX_PEDESTALS = 24;
+// Raised again to 80 for a house: a furnished floor of four rooms is forty
+// pieces before anyone adds a plant stand.
+export const MAX_PEDESTALS = 80;
 /** The pedestal asked for: 44″ tall, 12 × 12, with a solid top. */
 export const PEDESTAL = { width: 12, depth: 12, height: 44, color: "#f4f3f0" };
 /**
@@ -421,6 +424,24 @@ export const FURNITURE = {
   // usual residential code, and the height is floor to floor. Its footprint
   // runs up toward −Z, so it climbs away from whoever stands at its foot.
   stairs: { label: "Stairs · straight flight", width: 36, depth: 130, height: 108, color: "#b48a5e", limits: { width: [24, 96], depth: [40, 240], height: [12, 144] } },
+  // The home set. Sizes are the common ones — a queen bed, a three-seat
+  // sofa, a six-seat dining table, a 24″-deep kitchen base cabinet — each a
+  // starting point typed over like any other. Height is the overall height:
+  // a bed's headboard, a sofa's back, a table's top. Each faces +Z, so its
+  // back (headboard, sofa back, shelf back) is at −Z and a piece turned to
+  // stand against a north wall needs no turning at all.
+  bed: { label: "Bed · queen", width: 60, depth: 80, height: 40, color: "#e8e3da", limits: { width: [30, 96], depth: [60, 96], height: [12, 72] } },
+  sofa: { label: "Sofa · three seat", width: 84, depth: 36, height: 32, color: "#8b8f94", limits: { width: [30, 144], depth: [24, 72], height: [20, 48] } },
+  armchair: { label: "Armchair", width: 32, depth: 34, height: 32, color: "#a5876a", limits: { width: [20, 60], depth: [20, 60], height: [20, 48] } },
+  dining: { label: "Dining table", width: 72, depth: 36, height: 30, color: "#8a6a4a", limits: { width: [24, 144], depth: [24, 72], height: [16, 42] } },
+  coffee: { label: "Coffee table", width: 48, depth: 24, height: 17, color: "#6e4c33", limits: { width: [16, 84], depth: [16, 48], height: [10, 30] } },
+  desk: { label: "Desk", width: 54, depth: 26, height: 30, color: "#c9ab85", limits: { width: [24, 96], depth: [18, 42], height: [24, 42] } },
+  cabinet: { label: "Kitchen base cabinet", width: 36, depth: 24, height: 36, color: "#f1efea", limits: { width: [9, 144], depth: [12, 36], height: [24, 42] } },
+  wallcab: { label: "Kitchen wall cabinet", width: 36, depth: 12, height: 84, color: "#f1efea", limits: { width: [9, 144], depth: [10, 24], height: [60, 108] } },
+  shelves: { label: "Bookshelf", width: 36, depth: 12, height: 72, color: "#d7c3a3", limits: { width: [12, 120], depth: [8, 24], height: [24, 108] } },
+  dresser: { label: "Dresser", width: 60, depth: 18, height: 32, color: "#b69572", limits: { width: [18, 84], depth: [14, 26], height: [24, 60] } },
+  nightstand: { label: "Nightstand", width: 20, depth: 16, height: 24, color: "#b69572", limits: { width: [12, 36], depth: [12, 24], height: [16, 32] } },
+  rug: { label: "Rug · 8×10", width: 96, depth: 120, height: 0.5, color: "#9b7f6a", limits: { width: [24, 240], depth: [24, 240], height: [0.5, 2] } },
 };
 /** The size limits of one kind of floor piece. */
 export const furnitureLimits = (kind) =>
@@ -897,6 +918,7 @@ export function validateProject(p) {
   }
   // Rooms: the house itself. Optional, like every other list here.
   if (!validRooms(p.booth.rooms)) fail();
+  if (!homeRooms(p).every((r) => validFinish(r.finish))) fail();
   const roomIds = new Set(homeRooms(p).map((r) => r.id));
   const ids = new Set();
   for (const a of p.art) {
