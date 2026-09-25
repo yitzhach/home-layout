@@ -142,7 +142,7 @@ export function checkClearance(p, { accessible = ACCESSIBLE } = {}) {
         level: "problem",
         ids: [piece.id],
         inches: round(past),
-        text: `${piece.name} stands ${round(past)}″ outside the booth's footprint.`,
+        text: `${piece.name} stands ${round(past)}″ outside the house's footprint.`,
       });
   }
   for (let i = 0; i < pieces.length; i++)

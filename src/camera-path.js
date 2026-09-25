@@ -73,7 +73,7 @@ export const MOVES = {
     label: "Orbit · slow arc",
     seconds: 12,
     ease: smootherstep,
-    describe: "Drifts a third of a turn around the booth at the height you set.",
+    describe: "Drifts a third of a turn around the home at the height you set.",
     at: (e) => ({ radius: 1, theta: (-55 + 110 * e) * DEG, phi: 0, lift: 0 }),
   },
   push: {

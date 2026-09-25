@@ -693,7 +693,7 @@ const finite = (n, min, max) =>
 export function validateProject(p) {
   const fail = () => {
     throw new Error(
-      "This is not a valid Booth Studio v1 backup. Your current project was kept.",
+      "This is not a valid Home Layout v1 backup. Your current project was kept.",
     );
   };
   if (

@@ -356,6 +356,8 @@ export class BoothScene {
     this.selectedPanel = null;
     this.selectedPedestal = null;
     this.pedestalObjects = [];
+    // Each room's floor, for a click on it to select that room.
+    this.roomFloorObjects = [];
     this.pedestalFrames = {};
     this.personFrames = {};
     // Tags hidden right now (see src/views.js). A view setting: main.js owns
@@ -411,7 +413,7 @@ export class BoothScene {
     host.append(this.renderer.domElement);
     this.renderer.domElement.setAttribute(
       "aria-label",
-      "Interactive measured 3D booth",
+      "Interactive measured 3D home",
     );
     this.camera = new T.PerspectiveCamera(FOV, 1, 0.02, 100);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -447,6 +449,8 @@ export class BoothScene {
     this.annotations = [];
     this.measure = { on: false, points: [] };
     this.onMeasure = () => {};
+    // A click that lands on a room's floor and nothing else. main.js sets it.
+    this.onSelectRoom = () => {};
     this.watchForChanges();
     this.startLoop();
   }
@@ -1160,6 +1164,7 @@ export class BoothScene {
       floor.userData.room = r.id;
       floor.userData.finish = id;
       this.group.add(floor);
+      this.roomFloorObjects.push(floor);
       // A photograph of the material, when the owner has supplied one,
       // replaces the pattern; tinted by the floor colour only when one is set.
       floorPhoto(id).then((photo) => {
@@ -2982,6 +2987,13 @@ export class BoothScene {
           // Shift adds to the selection rather than replacing it; main.js
           // keeps the set, because the set is about the inspector.
           this.onSelect(id, { add: e.shiftKey });
+          // A click that found no work, wall or piece but landed on a room's
+          // floor selects that room. The floors lie under everything else, so
+          // they are asked last and only when nothing stood in the way.
+          if (!id) {
+            const floor = this.ray.intersectObjects([...this.wallObjects, ...this.roomFloorObjects], false)[0];
+            if (floor?.object.userData.room) this.onSelectRoom(floor.object.userData.room);
+          }
         }
       }
       this.down = null;

@@ -43,12 +43,12 @@ test("a project carrying figures still validates, and a broken one does not", ()
   ]) {
     const bad = blankProject();
     bad.booth.people = [broken];
-    assert.throws(() => validateProject(bad), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(bad), /not a valid Home Layout/);
   }
 
   const tooMany = blankProject();
   tooMany.booth.people = Array.from({ length: MAX_PEOPLE + 1 }, (_, i) => newPerson("man", String(i)));
-  assert.throws(() => validateProject(tooMany), /not a valid Booth Studio/);
+  assert.throws(() => validateProject(tooMany), /not a valid Home Layout/);
 });
 
 test("the hide switch is optional, and absent means shown", () => {
@@ -67,7 +67,7 @@ test("the hide switch is optional, and absent means shown", () => {
   assert.equal(p.booth.people.length, 1, "hidden is not deleted");
   for (const bad of ["yes", 1, null]) {
     p.booth.showPeople = bad;
-    assert.throws(() => validateProject(p), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(p), /not a valid Home Layout/);
   }
 });
 

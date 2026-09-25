@@ -51,9 +51,27 @@ try {
   await page.click('[data-tab="rooms"]');
   await page.click('[data-action="room-select"]:has-text("Kitchen")');
   await page.selectOption('#new-room-type', 'dining');
+  const cameraBefore = await page.evaluate(() => window.__booth.scene.camera.position.y);
   await page.click('[data-action="room-add"][data-side="e"]');
   s = await state();
   const dining = s.rooms.at(-1);
+  assert.ok(await page.evaluate(() => window.__booth.scene.camera.position.y) > cameraBefore + 0.1,
+    'a house that grows is framed again, so the new room is in view');
+
+  // ---- Clicking a room's floor selects that room -------------------------
+  await page.click('[data-tab="art"]');
+  const at = await page.evaluate((id) => {
+    const s = window.__booth.scene, floor = s.group.getObjectByName('room-floor:' + id);
+    s.group.updateMatrixWorld(true);
+    // The far half of the floor, which the camera sees over the near wall.
+    const v = floor.getWorldPosition(floor.position.clone());
+    v.z -= floor.geometry.parameters.depth * 0.3;
+    v.project(s.camera);
+    const r = s.renderer.domElement.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  }, dining.id);
+  await page.mouse.click(at.x, at.y);
+  await page.waitForSelector('[data-action="room-select"].active:has-text("Dining room")');
   assert.equal(dining.name, 'Dining room');
   assert.equal(dining.openings, 1, 'a new room comes with a door into it');
   assert.equal(s.walls.length, 15, 'three new walls; the shared one is the kitchen\'s');
@@ -135,7 +153,7 @@ try {
   assert.equal(stairs.limits, undefined, 'the kind\'s limits are not copied into the record');
 
   assert.deepEqual(errors, [], 'no page errors');
-  console.log('PASS the starter floor builds shared walls once with doors, windows and an archway cut in; a room added beside another shares its wall and gets a door, grows from that wall, takes a window, opens up, survives a reload, and comes back with undo after a delete; stairs are furniture.');
+  console.log('PASS the starter floor builds shared walls once with doors, windows and an archway cut in; a room added beside another shares its wall and gets a door, grows from that wall, takes a window, opens up, survives a reload, and comes back with undo after a delete; the view refits as the house grows; clicking a room floor selects it; stairs are furniture.');
 } finally {
   await browser.close();
   await server.close();

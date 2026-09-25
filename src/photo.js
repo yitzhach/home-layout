@@ -7,7 +7,7 @@ export class PhotoEditor {
     this.start = start;
     this.cache = new Map();
     this.canvas = document.createElement("canvas");
-    this.canvas.setAttribute("aria-label", "Booth photo perspective editor");
+    this.canvas.setAttribute("aria-label", "Room photo perspective editor");
     host.append(this.canvas);
     this.ctx = this.canvas.getContext("2d");
     new ResizeObserver(() => this.draw()).observe(host);
@@ -198,7 +198,7 @@ export class PhotoEditor {
   }
   async export(width) {
     const a = this.p.assets[this.p.photo.asset];
-    if (!a) throw new Error("Upload a booth photo first.");
+    if (!a) throw new Error("Upload a room photo first.");
     const c = document.createElement("canvas");
     c.width = width;
     c.height = Math.round((width * a.height) / a.width);

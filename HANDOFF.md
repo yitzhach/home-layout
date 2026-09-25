@@ -85,10 +85,18 @@ app learned — its rules, its tests, its hard-won bugs — is in
 - **Known rough edges, not yet done:** walls are the booth's 2.2″ slab, not a
   real 4½″ stud wall (art hangs relative to that slab — thickening it means
   moving the exterior frame too); corners of a room leave a small notch
-  outside; free-standing panels take no openings; clicking a room's floor
-  does not select it; the camera does not refit when the house grows (Reset
-  view does); many strings still say "booth" (library "Booth assets", Photo
-  mode's "booth photo").
+  outside; free-standing panels take no openings. Three were fixed on
+  2026-09-25: clicking a room's floor now selects it and opens Rooms on it
+  (`scene.onSelectRoom`, asked only when the click found no work, wall or
+  piece, and a wall in front of the floor still wins); the camera refits
+  when the house grows (`settleRooms` sets `refitOwed`, `refreshScene`
+  re-applies the current view; shrinking leaves the view alone); and the
+  visible "booth" wording in the live UI now says home, room or project.
+  The dormant booth panels (art show, booth row, venue, light bar, quick
+  start) keep their booth wording, as do internal names (`p.booth`,
+  `BoothScene`, `window.__booth`, storage keys) — the stored ones cannot be
+  renamed without breaking older backups and saved settings, and the rest are
+  not worth the churn.
 
 ## Phase 2 — furniture and finishes
 
@@ -329,6 +337,10 @@ app learned — its rules, its tests, its hard-won bugs — is in
    the owner runs `npx wrangler secret put ANTHROPIC_API_KEY`, then tries
    "Match floor to a photo" and a wall photo's "Find the corners" on the
    live site.
+
+Phase 1's cheap rough edges (room select by floor click, camera refit,
+"booth" wording) were done on 2026-09-25; `tests/view-rooms.mjs` covers the
+first two.
 
 After the five phases, what is open is the owner's to choose: payment for
 Pro and the final Lite/Pro split (then counting wall photos for Lite), more

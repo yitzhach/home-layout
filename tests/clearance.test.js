@@ -97,7 +97,7 @@ test("the underlay is optional and must name an image in the backup", () => {
   for (const bad of [{ ...p.booth.underlay, asset: "missing" }, { ...p.booth.underlay, opacity: 2 }, { ...p.booth.underlay, width: 1 }, "plan"]) {
     const q = structuredClone(p);
     q.booth.underlay = bad;
-    assert.throws(() => validateProject(q), /not a valid Booth Studio/);
+    assert.throws(() => validateProject(q), /not a valid Home Layout/);
   }
 });
 
